@@ -1,0 +1,327 @@
+import networkx as nx
+import pandas as pd
+from typing import Dict, List, Any, Tuple, Set, Optional, Union
+
+# Sample code showing NetworkX native querying and updating operations
+
+def networkx_query_examples(graph):
+    """
+    Examples of querying and modifying a NetworkX graph.
+    
+    Args:
+        graph: A NetworkX graph object (can be DiGraph, MultiDiGraph, etc.)
+    """
+    # ----- BASIC NODE OPERATIONS -----
+    
+    # Get all nodes
+    all_nodes = list(graph.nodes())
+    
+    # Get node data (properties)
+    node_id = "node1"  # example node ID
+    if graph.has_node(node_id):
+        node_data = graph.nodes[node_id]  # Returns a dict with all node attributes
+        
+    # Get specific node property
+    if graph.has_node(node_id) and 'property_name' in graph.nodes[node_id]:
+        property_value = graph.nodes[node_id]['property_name']
+    
+    # Get nodes with specific attributes (filtering nodes)
+    matching_nodes = [
+        node for node, attrs in graph.nodes(data=True) 
+        if 'attribute_name' in attrs and attrs['attribute_name'] == 'attribute_value'
+    ]
+    
+    # Get nodes by label (assuming labels are stored in a 'label' attribute)
+    label_nodes = [
+        node for node, attrs in graph.nodes(data=True)
+        if 'label' in attrs and attrs['label'] == 'desired_label'
+    ]
+    
+    # ----- BASIC EDGE OPERATIONS -----
+    
+    # Get all edges
+    all_edges = list(graph.edges())
+    
+    # Get all edges with data
+    edges_with_data = list(graph.edges(data=True))
+    
+    # Get edge data between two nodes
+    source_id = "node1"
+    target_id = "node2"
+    if graph.has_edge(source_id, target_id):
+        edge_data = graph.edges[source_id, target_id]  # Returns a dict with all edge attributes
+    
+    # Get edges with specific type (assuming edge type stored in 'type' attribute)
+    matching_edges = [
+        (src, tgt) for src, tgt, attrs in graph.edges(data=True)
+        if 'type' in attrs and attrs['type'] == 'edge_type'
+    ]
+    
+    # ----- ADVANCED QUERYING -----
+    
+    # Get neighbors of a node
+    neighbors = list(graph.neighbors(node_id))
+    
+    # Get only outgoing neighbors (for directed graphs)
+    outgoing = list(graph.successors(node_id))
+    
+    # Get only incoming neighbors (for directed graphs)
+    incoming = list(graph.predecessors(node_id))
+    
+    # Find all paths between two nodes
+    all_paths = list(nx.all_simple_paths(graph, source_id, target_id))
+    
+    # Find shortest path
+    try:
+        shortest_path = nx.shortest_path(graph, source_id, target_id)
+    except nx.NetworkXNoPath:
+        shortest_path = None
+    
+    # Find all nodes reachable from a given node
+    # This is useful for rule traversal in your business graph
+    reachable_nodes = nx.descendants(graph, node_id)
+    
+    # ----- BUSINESS RULES SPECIFIC QUERYING -----
+    
+    # Get all resolution nodes (assuming they have a 'type' attribute of 'resolution')
+    resolution_nodes = [
+        node for node, attrs in graph.nodes(data=True)
+        if 'type' in attrs and attrs['type'] == 'resolution'
+    ]
+    
+    # Get all condition nodes based on a specific attribute
+    condition_nodes = [
+        node for node, attrs in graph.nodes(data=True)
+        if 'type' in attrs and attrs['type'] == 'condition' and
+        'attribute' in attrs and attrs['attribute'] == 'Product'
+    ]
+    
+    # Find paths from a node to all resolution nodes
+    paths_to_resolutions = []
+    for res_node in resolution_nodes:
+        try:
+            path = nx.shortest_path(graph, node_id, res_node)
+            paths_to_resolutions.append(path)
+        except nx.NetworkXNoPath:
+            continue
+    
+    # ----- QUERYING THE GRAPH STRUCTURE -----
+    
+    # Find root nodes (nodes with no incoming edges, good for starting traversal)
+    root_nodes = [n for n, d in graph.in_degree() if d == 0]
+    
+    # Find leaf nodes (nodes with no outgoing edges, often resolutions)
+    leaf_nodes = [n for n, d in graph.out_degree() if d == 0]
+    
+    # ----- TRAVERSING THE GRAPH FOR BUSINESS RULES -----
+    
+    def traverse_for_decision(input_data: Dict[str, Any]):
+        """
+        Traverse the graph based on input data to find the appropriate resolution.
+        This is similar to the traverse method from the BusinessRulesGraph class.
+        
+        Args:
+            input_data: Dictionary of attribute-value pairs (e.g. {'Product': 'Laptop', 'Region': 'North'})
+            
+        Returns:
+            The resolution node ID if found, None otherwise
+        """
+        # Start with root nodes
+        current_nodes = [n for n, d in graph.in_degree() if d == 0]
+        visited = set()
+        
+        while current_nodes:
+            next_nodes = []
+            
+            for node in current_nodes:
+                if node in visited:
+                    continue
+                    
+                visited.add(node)
+                node_attrs = graph.nodes[node]
+                
+                # Check if this is a resolution node
+                if 'type' in node_attrs and node_attrs['type'] == 'resolution':
+                    return node
+                
+                # Check if condition matches input
+                if 'type' in node_attrs and node_attrs['type'] == 'condition':
+                    attribute = node_attrs.get('attribute')
+                    value = node_attrs.get('value')
+                    
+                    if attribute in input_data and input_data[attribute] == value:
+                        # Condition matches, add outgoing neighbors to next nodes
+                        next_nodes.extend(graph.successors(node))
+                else:
+                    # Not a condition node, just follow all outgoing edges
+                    next_nodes.extend(graph.successors(node))
+            
+            current_nodes = next_nodes
+        
+        return None  # No resolution found
+    
+    # ----- UPDATING THE GRAPH -----
+    
+    # Add a new node
+    new_node_id = "new_node"
+    graph.add_node(new_node_id, type='condition', attribute='NewAttribute', value='NewValue')
+    
+    # Update node attributes
+    graph.nodes[node_id]['updated_attribute'] = 'new_value'
+    
+    # Add multiple attributes at once
+    nx.set_node_attributes(graph, {node_id: {'attr1': 'val1', 'attr2': 'val2'}})
+    
+    # Add a new edge
+    graph.add_edge(source_id, target_id, type='RELATED_TO', weight=1.0)
+    
+    # Update edge attributes
+    graph.edges[source_id, target_id]['updated_attribute'] = 'new_value'
+    
+    # Add multiple edge attributes at once
+    nx.set_edge_attributes(graph, {(source_id, target_id): {'attr1': 'val1', 'attr2': 'val2'}})
+    
+    # Remove a node (and all its edges)
+    graph.remove_node(node_id)
+    
+    # Remove an edge
+    graph.remove_edge(source_id, target_id)
+    
+    # ----- CONVERTING QUERY RESULTS TO DATAFRAMES -----
+    
+    # Get all nodes as a DataFrame
+    nodes_df = pd.DataFrame.from_dict(dict(graph.nodes(data=True)), orient='index')
+    
+    # Get all edges as a DataFrame
+    edges_list = [(u, v, d) for u, v, d in graph.edges(data=True)]
+    edges_df = pd.DataFrame(edges_list, columns=['source', 'target', 'attributes'])
+    
+    # Custom DataFrame of node properties
+    nodes_with_props = []
+    for node, attrs in graph.nodes(data=True):
+        node_info = {'id': node}
+        node_info.update(attrs)  # Add all attributes
+        nodes_with_props.append(node_info)
+    
+    custom_df = pd.DataFrame(nodes_with_props)
+
+
+# Example for your business rules graph application:
+
+def find_applicable_resolution(graph, input_data):
+    """
+    Find the applicable resolution based on input data.
+    
+    Args:
+        graph: NetworkX graph containing the business rules
+        input_data: Dictionary of attribute-value pairs (e.g. {'Product': 'Laptop', 'Region': 'North'})
+        
+    Returns:
+        Resolution node and path taken to reach it
+    """
+    # Get all condition nodes that match our input data
+    matching_conditions = []
+    
+    for node, attrs in graph.nodes(data=True):
+        if attrs.get('type') == 'condition':
+            attribute = attrs.get('attribute')
+            value = attrs.get('value')
+            
+            if attribute in input_data and input_data[attribute] == value:
+                matching_conditions.append(node)
+    
+    # Find paths from matching conditions to resolution nodes
+    resolution_nodes = [
+        node for node, attrs in graph.nodes(data=True)
+        if attrs.get('type') == 'resolution'
+    ]
+    
+    best_path = None
+    resolution = None
+    
+    for condition in matching_conditions:
+        for resolution_node in resolution_nodes:
+            try:
+                # Find shortest path from this condition to a resolution
+                path = nx.shortest_path(graph, condition, resolution_node)
+                
+                # Check if all conditions in the path match our input data
+                valid_path = True
+                for node in path:
+                    node_attrs = graph.nodes[node]
+                    if node_attrs.get('type') == 'condition':
+                        attr = node_attrs.get('attribute')
+                        val = node_attrs.get('value')
+                        
+                        if attr not in input_data or input_data[attr] != val:
+                            valid_path = False
+                            break
+                
+                if valid_path:
+                    # If we found a valid path, use it
+                    if best_path is None or len(path) < len(best_path):
+                        best_path = path
+                        resolution = resolution_node
+            
+            except nx.NetworkXNoPath:
+                continue
+    
+    return resolution, best_path
+
+
+def update_business_rule(graph, condition_values, resolution_value):
+    """
+    Add or update a business rule in the graph.
+    
+    Args:
+        graph: NetworkX graph containing the business rules
+        condition_values: List of (attribute, value) tuples
+        resolution_value: The resolution value for this rule
+    """
+    condition_nodes = []
+    
+    # Create or find condition nodes
+    for i, (attribute, value) in enumerate(condition_values):
+        # Look for an existing condition node
+        existing_node = None
+        for node, attrs in graph.nodes(data=True):
+            if (attrs.get('type') == 'condition' and 
+                attrs.get('attribute') == attribute and 
+                attrs.get('value') == value):
+                existing_node = node
+                break
+        
+        if existing_node:
+            condition_nodes.append(existing_node)
+        else:
+            # Create a new condition node
+            node_id = f"condition_{attribute}_{value}"
+            graph.add_node(node_id, 
+                          type='condition',
+                          attribute=attribute,
+                          value=value,
+                          description=f"{attribute} = {value}")
+            condition_nodes.append(node_id)
+    
+    # Create or find resolution node
+    resolution_node = None
+    for node, attrs in graph.nodes(data=True):
+        if (attrs.get('type') == 'resolution' and 
+            attrs.get('value') == resolution_value):
+            resolution_node = node
+            break
+    
+    if not resolution_node:
+        resolution_node = f"resolution_{resolution_value}"
+        graph.add_node(resolution_node,
+                      type='resolution',
+                      value=resolution_value,
+                      description=f"Resolution: {resolution_value}")
+    
+    # Link the conditions in sequence, then to the resolution
+    for i in range(len(condition_nodes) - 1):
+        graph.add_edge(condition_nodes[i], condition_nodes[i+1], order=i)
+    
+    # Link the last condition to the resolution
+    if condition_nodes:
+        graph.add_edge(condition_nodes[-1], resolution_node)
