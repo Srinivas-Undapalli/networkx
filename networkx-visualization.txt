@@ -1,0 +1,348 @@
+import networkx as nx
+import matplotlib.pyplot as plt
+import pandas as pd
+from IPython.display import display
+
+# Method 1: Basic Matplotlib Visualization
+def visualize_basic(graph, title="NetworkX Graph"):
+    """
+    Basic visualization using NetworkX and Matplotlib.
+    
+    Args:
+        graph: NetworkX graph
+        title: Title for the plot
+    """
+    plt.figure(figsize=(10, 8))
+    
+    # Create layout (node positions)
+    pos = nx.spring_layout(graph, seed=42)
+    
+    # Draw nodes
+    nx.draw_networkx_nodes(graph, pos, node_size=700, node_color='skyblue')
+    
+    # Draw edges
+    nx.draw_networkx_edges(graph, pos, width=1.0, alpha=0.5)
+    
+    # Draw labels
+    nx.draw_networkx_labels(graph, pos, font_size=10, font_family='sans-serif')
+    
+    # Set title and turn off axis
+    plt.title(title)
+    plt.axis('off')
+    
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
+
+# Method 2: Visualization with node colors based on attributes
+def visualize_with_attributes(graph, node_attr='label', title="NetworkX Graph with Attributes"):
+    """
+    Visualization with nodes colored based on an attribute.
+    
+    Args:
+        graph: NetworkX graph
+        node_attr: Node attribute to use for coloring
+        title: Title for the plot
+    """
+    plt.figure(figsize=(10, 8))
+    
+    # Create layout
+    pos = nx.spring_layout(graph, seed=42)
+    
+    # Get unique attribute values for coloring
+    attr_values = set()
+    for _, attrs in graph.nodes(data=True):
+        if node_attr in attrs:
+            attr_values.add(attrs[node_attr])
+    
+    # Create a color map
+    import matplotlib.colors as mcolors
+    colors = list(mcolors.TABLEAU_COLORS.values())
+    color_map = {value: colors[i % len(colors)] for i, value in enumerate(attr_values)}
+    
+    # Assign colors to nodes based on attribute
+    node_colors = []
+    for node, attrs in graph.nodes(data=True):
+        if node_attr in attrs:
+            node_colors.append(color_map[attrs[node_attr]])
+        else:
+            node_colors.append('gray')  # Default color
+    
+    # Draw nodes with custom colors
+    nx.draw_networkx_nodes(graph, pos, node_size=700, node_color=node_colors)
+    
+    # Draw edges
+    nx.draw_networkx_edges(graph, pos, width=1.0, alpha=0.5)
+    
+    # Draw labels
+    nx.draw_networkx_labels(graph, pos, font_size=10, font_family='sans-serif')
+    
+    # Create legend
+    import matplotlib.patches as mpatches
+    legend_handles = [mpatches.Patch(color=color, label=attr) 
+                     for attr, color in color_map.items()]
+    plt.legend(handles=legend_handles, title=node_attr)
+    
+    # Set title and turn off axis
+    plt.title(title)
+    plt.axis('off')
+    
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
+
+# Method 3: Interactive visualization with Plotly
+def visualize_plotly(graph, node_attr='label'):
+    """
+    Create an interactive visualization using Plotly.
+    
+    Args:
+        graph: NetworkX graph
+        node_attr: Node attribute to use for node hover information
+        
+    Returns:
+        Plotly figure object
+    """
+    import plotly.graph_objects as go
+    
+    # Create layout
+    pos = nx.spring_layout(graph, seed=42)
+    
+    # Create edge trace
+    edge_x = []
+    edge_y = []
+    
+    for edge in graph.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
+    
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=0.5, color='#888'),
+        hoverinfo='none',
+        mode='lines'
+    )
+    
+    # Create node trace
+    node_x = []
+    node_y = []
+    
+    for node in graph.nodes():
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+    
+    # Create hover text with node information
+    node_text = []
+    for node, attrs in graph.nodes(data=True):
+        text = f"ID: {node}<br>"
+        
+        # Add all attributes to hover text
+        for key, value in attrs.items():
+            text += f"{key}: {value}<br>"
+        
+        node_text.append(text)
+    
+    # Get node colors based on attribute if it exists
+    node_colors = []
+    for _, attrs in graph.nodes(data=True):
+        if node_attr in attrs:
+            node_colors.append(attrs[node_attr])
+        else:
+            node_colors.append('gray')
+    
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers',
+        hoverinfo='text',
+        text=node_text,
+        marker=dict(
+            showscale=False,
+            color=node_colors,
+            size=10,
+            line_width=2)
+    )
+    
+    # Create figure
+    fig = go.Figure(data=[edge_trace, node_trace],
+                 layout=go.Layout(
+                    title='Interactive Network Graph',
+                    showlegend=False,
+                    hovermode='closest',
+                    margin=dict(b=20, l=5, r=5, t=40),
+                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+                    )
+    
+    return fig
+
+# Method 4: Visualization of a business rules graph with custom node styles
+def visualize_business_rules(graph, title="Business Rules Graph"):
+    """
+    Visualize a business rules graph with custom node styles for conditions and resolutions.
+    
+    Args:
+        graph: NetworkX graph with 'type' attributes for nodes ('condition' or 'resolution')
+        title: Title for the plot
+    """
+    plt.figure(figsize=(12, 10))
+    
+    # Create layout - hierarchical layout often works well for business rules
+    try:
+        # Try to use hierarchical layout
+        pos = nx.nx_agraph.graphviz_layout(graph, prog='dot')
+    except:
+        # Fall back to spring layout if graphviz is not available
+        pos = nx.spring_layout(graph, k=0.5, iterations=100, seed=42)
+    
+    # Separate nodes by type
+    condition_nodes = [node for node, attrs in graph.nodes(data=True) 
+                       if attrs.get('type') == 'condition']
+    resolution_nodes = [node for node, attrs in graph.nodes(data=True) 
+                       if attrs.get('type') == 'resolution']
+    other_nodes = [node for node in graph.nodes() 
+                  if node not in condition_nodes and node not in resolution_nodes]
+    
+    # Draw condition nodes
+    nx.draw_networkx_nodes(graph, pos, 
+                          nodelist=condition_nodes,
+                          node_color='lightblue', 
+                          node_size=800,
+                          node_shape='o')
+    
+    # Draw resolution nodes
+    nx.draw_networkx_nodes(graph, pos, 
+                          nodelist=resolution_nodes,
+                          node_color='lightgreen', 
+                          node_size=1000,
+                          node_shape='s')
+    
+    # Draw other nodes
+    if other_nodes:
+        nx.draw_networkx_nodes(graph, pos, 
+                              nodelist=other_nodes,
+                              node_color='gray', 
+                              node_size=600)
+    
+    # Draw edges
+    nx.draw_networkx_edges(graph, pos, width=1.0, alpha=0.7, 
+                          edge_color='gray', arrows=True)
+    
+    # Create custom labels
+    labels = {}
+    for node, attrs in graph.nodes(data=True):
+        if 'description' in attrs:
+            labels[node] = attrs['description']
+        elif 'attribute' in attrs and 'value' in attrs:
+            labels[node] = f"{attrs['attribute']}={attrs['value']}"
+        elif 'value' in attrs:
+            labels[node] = attrs['value']
+        else:
+            labels[node] = str(node)
+    
+    # Draw labels with smaller font
+    nx.draw_networkx_labels(graph, pos, labels=labels, 
+                           font_size=8, font_family='sans-serif')
+    
+    # Add legend
+    import matplotlib.patches as mpatches
+    condition_patch = mpatches.Patch(color='lightblue', label='Condition')
+    resolution_patch = mpatches.Patch(color='lightgreen', label='Resolution')
+    patches = [condition_patch, resolution_patch]
+    if other_nodes:
+        other_patch = mpatches.Patch(color='gray', label='Other')
+        patches.append(other_patch)
+    
+    plt.legend(handles=patches)
+    
+    # Set title and turn off axis
+    plt.title(title)
+    plt.axis('off')
+    
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
+
+# Example usage:
+def create_example_graph():
+    """Create a sample graph with labels and properties."""
+    G = nx.DiGraph()
+    
+    # Add nodes with different labels
+    G.add_node("user1", label="User", name="Alice", priority=5)
+    G.add_node("user2", label="User", name="Bob", priority=3)
+    G.add_node("product1", label="Product", name="Laptop", priority=5)
+    G.add_node("product2", label="Product", name="Desktop", priority=4)
+    G.add_node("order1", label="Order", status="Completed", amount=1000)
+    
+    # Add edges
+    G.add_edge("user1", "product1", type="VIEWED")
+    G.add_edge("user1", "order1", type="PLACED")
+    G.add_edge("order1", "product1", type="CONTAINS")
+    G.add_edge("user2", "product2", type="VIEWED")
+    G.add_edge("user2", "product1", type="VIEWED")
+    
+    return G
+
+def create_business_rules_example():
+    """Create a sample business rules graph."""
+    G = nx.DiGraph()
+    
+    # Add condition nodes
+    G.add_node("c1", type="condition", attribute="Product", value="Laptop", 
+              description="Product = Laptop")
+    G.add_node("c2", type="condition", attribute="Region", value="North", 
+              description="Region = North")
+    G.add_node("c3", type="condition", attribute="CustomerType", value="Business",
+              description="CustomerType = Business")
+    G.add_node("c4", type="condition", attribute="Region", value="South",
+              description="Region = South")
+    G.add_node("c5", type="condition", attribute="Product", value="Desktop",
+              description="Product = Desktop")
+    
+    # Add resolution nodes
+    G.add_node("r1", type="resolution", value="Premium Support",
+              description="Premium Support")
+    G.add_node("r2", type="resolution", value="Standard Support",
+              description="Standard Support")
+    G.add_node("r3", type="resolution", value="Basic Support",
+              description="Basic Support")
+    
+    # Add edges for rules
+    G.add_edge("c1", "c2")
+    G.add_edge("c2", "c3")
+    G.add_edge("c3", "r1")
+    G.add_edge("c1", "c4")
+    G.add_edge("c4", "r2")
+    G.add_edge("c5", "c2")
+    G.add_edge("c5", "c4")
+    G.add_edge("c5", "r3")
+    
+    return G
+
+# Run examples
+if __name__ == "__main__":
+    print("Creating example graph...")
+    G = create_example_graph()
+    
+    print("Basic visualization:")
+    visualize_basic(G, "Basic Graph Visualization")
+    
+    print("Visualization with node attributes:")
+    visualize_with_attributes(G, node_attr='label', title="Nodes Colored by Label")
+    
+    try:
+        import plotly.graph_objects as go
+        print("Interactive Plotly visualization:")
+        fig = visualize_plotly(G, node_attr='label')
+        fig.show()
+    except ImportError:
+        print("Plotly not installed. Install with: pip install plotly")
+    
+    print("Creating business rules graph...")
+    BR_G = create_business_rules_example()
+    
+    print("Business rules visualization:")
+    visualize_business_rules(BR_G, "Business Rules Graph Example")
