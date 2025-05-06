@@ -1,0 +1,550 @@
+I'll help you design a more robust supervisor-based langgraph system that can handle dynamic transitions between agents based on user input, including handling new incidents mid-conversation, chit-chat, and history references. Let's focus on creating seamless delegation with clear code examples for connecting to your existing langgraph agent.
+
+## Enhanced Supervisor Architecture with Dynamic Routing
+
+The key to seamless delegation is a more sophisticated supervisor that can:
+1. Continuously re-evaluate the context of conversation
+2. Maintain session history across worker transitions
+3. Handle interruptions and context switches naturally
+4. Connect to your existing langgraph agent as a worker
+
+Here's how we can implement this:
+
+```python
+from typing import Dict, List, Tuple, Any, Optional, TypedDict, Literal
+from langgraph.graph import StateGraph, END
+import operator
+from langchain.llms import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.pydantic_v1 import BaseModel
+
+# Define a more comprehensive state to track conversation flow
+class AgentState(TypedDict):
+    messages: List[dict]  # Full conversation history
+    active_incidents: List[dict]  # Track multiple incident threads
+    current_thread_id: str  # Which conversation thread we're in
+    current_worker: Literal["supervisor", "classifier", "historical", "conversational", "chitchat"]
+    classification: Optional[str]  # Latest message classification
+    pending_transitions: List[dict]  # Queue of transitions to process
+    context: dict  # Shared context between workers
+    historical_agent_state: Optional[dict]  # State from your existing langgraph agent
+    action_state: Optional[dict]  # State for the action agent
+    session_summary: dict  # Summarized history for quick reference
+    
+# Define the message classifier that determines how to route messages
+def classify_message(state: AgentState) -> AgentState:
+    """Determines message type and routing"""
+    messages = state["messages"]
+    last_message = messages[-1] if messages else None
+    
+    if not last_message:
+        return {**state, "classification": None}
+    
+    # Use an LLM to classify the message
+    llm = ChatOpenAI(temperature=0)
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """Classify the incoming user message into one of these categories:
+        - new_incident: User is reporting a new incident or issue
+        - followup_incident: User is asking about an existing incident
+        - action_request: User is asking for a specific action to be taken
+        - chitchat: General conversation not related to incidents
+        - history_reference: User is referring to something discussed earlier
+        - clarification: User is asking for clarification about previous response
+        
+        Return only the category name as a single word."""),
+        ("human", f"{last_message.get('content', '')}")
+    ])
+    
+    classification = llm.invoke(prompt).content.strip().lower()
+    
+    # Update the state with the classification
+    return {**state, "classification": classification}
+
+# Supervisor node that manages the workflow
+def supervisor(state: AgentState) -> AgentState:
+    """Central coordinator that decides routing based on context"""
+    messages = state["messages"]
+    classification = state["classification"]
+    current_thread = state["current_thread_id"]
+    
+    # Create a new context entry if one doesn't exist
+    if "context" not in state:
+        state = {**state, "context": {}}
+    
+    # Update session summary with any new information
+    # This would be implemented using an LLM to create concise summaries
+    
+    # Handle special case: if user refers to history, retrieve relevant context
+    if classification == "history_reference":
+        # Implement context retrieval logic here
+        # For example, searching previous messages for relevant information
+        pass
+        
+    # Determine the appropriate next worker based on classification
+    next_worker = None
+    if classification == "new_incident":
+        # Create a new incident thread
+        new_thread_id = f"incident_{len(state['active_incidents']) + 1}"
+        new_incident = {
+            "id": new_thread_id,
+            "status": "new",
+            "messages": [messages[-1]],
+        }
+        active_incidents = state["active_incidents"] + [new_incident]
+        
+        # Update state to track the new incident
+        state = {
+            **state, 
+            "active_incidents": active_incidents,
+            "current_thread_id": new_thread_id,
+            "current_worker": "historical"  # Route to historical agent
+        }
+        
+    elif classification == "followup_incident":
+        # Determine which incident thread this relates to
+        # This might require a separate LLM call to match the message to an incident
+        state = {**state, "current_worker": "historical"}
+        
+    elif classification == "action_request":
+        state = {**state, "current_worker": "conversational"}
+        
+    elif classification == "chitchat":
+        state = {**state, "current_worker": "chitchat"}
+        
+    return state
+
+# Connect to existing historical langgraph agent
+def historical_rules_worker(state: AgentState) -> AgentState:
+    """Wrapper for your existing langgraph agent"""
+    
+    # Extract relevant messages for this incident
+    incident_id = state["current_thread_id"]
+    incident = next((inc for inc in state["active_incidents"] if inc["id"] == incident_id), None)
+    
+    if not incident:
+        return state
+    
+    # Prepare input for your existing langgraph agent
+    # This assumes your existing agent has a specific input format
+    existing_agent_input = {
+        "query": incident["messages"][-1]["content"],
+        "context": state["context"].get(incident_id, {})
+    }
+    
+    # Call your existing langgraph agent
+    # This is where you would integrate with your existing implementation
+    # For example:
+    # from your_existing_module import historical_agent
+    # historical_result = historical_agent.invoke(existing_agent_input)
+    
+    # For this example, we'll simulate a response
+    historical_result = {
+        "resolution": None,  # Simulate no resolution found
+        "reasoning": "No matching business rule found for this case after traversing knowledge graph.",
+        "traversal_path": ["rule_123", "rule_456", "rule_789"],
+    }
+    
+    # Update the context with results from historical agent
+    updated_context = {
+        **state["context"],
+        incident_id: {
+            **state["context"].get(incident_id, {}),
+            "historical_result": historical_result
+        }
+    }
+    
+    # Determine if we need to transition to conversational agent
+    if not historical_result.get("resolution"):
+        next_worker = "conversational"
+    else:
+        next_worker = "supervisor"  # Return to supervisor with resolution
+    
+    return {
+        **state, 
+        "context": updated_context,
+        "current_worker": next_worker,
+        "historical_agent_state": historical_result
+    }
+
+# Conversational action agent
+def conversational_action_worker(state: AgentState) -> AgentState:
+    """Handles action planning and execution when historical rules don't apply"""
+    incident_id = state["current_thread_id"]
+    context = state["context"].get(incident_id, {})
+    historical_result = context.get("historical_result", {})
+    
+    # Extract the last message and any relevant history
+    last_message = state["messages"][-1]["content"]
+    
+    # Create a prompt that includes:
+    # 1. The failed historical resolution explanation
+    # 2. The user's request
+    # 3. Available actions
+    prompt_template = """
+    This incident could not be resolved using historical business rules:
+    
+    Reason: {reasoning}
+    
+    The user is asking: {user_message}
+    
+    Based on this, determine what actions might help resolve this issue.
+    Consider these available actions:
+    - Request additional information from the user
+    - Propose a workaround solution
+    - Escalate to a human specialist
+    - Check for similar historical cases
+    
+    Explain your reasoning and proposed next steps.
+    """
+    
+    # In a real implementation, you'd call your LLM here
+    llm = ChatOpenAI(temperature=0.2)
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", prompt_template),
+        ("human", last_message)
+    ])
+    
+    # Format the prompt with our context
+    formatted_prompt = prompt.format(
+        reasoning=historical_result.get("reasoning", "No historical rule applied"),
+        user_message=last_message
+    )
+    
+    # Get the response (in real implementation)
+    # action_response = llm.invoke(formatted_prompt)
+    
+    # Simulate a response for this example
+    action_response = {
+        "action_type": "propose_workaround",
+        "action_details": "Based on similar cases, we could try bypassing the standard workflow by...",
+        "reasoning": "While there's no direct rule for this case, similar scenarios were resolved by...",
+        "alternative_actions": ["request_more_info", "escalate_to_specialist"]
+    }
+    
+    # Update the context with the action results
+    updated_context = {
+        **state["context"],
+        incident_id: {
+            **context,
+            "action_response": action_response
+        }
+    }
+    
+    return {
+        **state,
+        "context": updated_context,
+        "current_worker": "supervisor",  # Return to supervisor
+        "action_state": action_response
+    }
+
+# Chit-chat handler
+def chitchat_worker(state: AgentState) -> AgentState:
+    """Handles general conversation not related to incidents"""
+    last_message = state["messages"][-1]["content"]
+    
+    # Simple prompt for chitchat
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are a helpful assistant. Respond naturally to the user's message.
+        Keep your response friendly but concise. After responding, return control to the main system."""),
+        ("human", last_message)
+    ])
+    
+    # In real implementation:
+    # llm = ChatOpenAI(temperature=0.7)
+    # chitchat_response = llm.invoke(prompt)
+    
+    # Simulate a response
+    chitchat_response = {
+        "content": "I understand. I'm here to help with both your technical issues and any questions you might have. Is there anything specific you'd like to know?",
+        "type": "chitchat"
+    }
+    
+    # Add response to messages
+    updated_messages = state["messages"] + [
+        {"role": "assistant", "content": chitchat_response["content"]}
+    ]
+    
+    return {
+        **state,
+        "messages": updated_messages,
+        "current_worker": "supervisor"  # Return to supervisor for next message
+    }
+
+# Response formatter
+def format_response(state: AgentState) -> AgentState:
+    """Formats the final response to present to the user"""
+    incident_id = state["current_thread_id"]
+    context = state["context"].get(incident_id, {})
+    
+    # Determine what type of response to generate based on the active worker
+    if state["current_worker"] == "historical" and context.get("historical_result", {}).get("resolution"):
+        # Format response from historical agent
+        response_content = f"Based on our business rules, I found a resolution: {context['historical_result']['resolution']}"
+    
+    elif state["current_worker"] == "conversational":
+        # Format response from action agent
+        action_response = context.get("action_response", {})
+        action_type = action_response.get("action_type")
+        
+        if action_type == "propose_workaround":
+            response_content = f"I couldn't find an exact rule for this, but here's what we can try: {action_response.get('action_details')}"
+        elif action_type == "request_more_info":
+            response_content = f"To help with this issue, I need to know: {action_response.get('action_details')}"
+        elif action_type == "escalate_to_specialist":
+            response_content = "This issue requires specialist attention. I'll escalate this for you."
+        else:
+            response_content = "I'm working on your request. Let me know if you need anything else."
+    
+    elif state["current_worker"] == "chitchat":
+        # Response already added in chitchat_worker
+        return state
+    
+    else:
+        response_content = "I'm processing your request. How can I help further?"
+    
+    # Add response to messages
+    updated_messages = state["messages"] + [
+        {"role": "assistant", "content": response_content}
+    ]
+    
+    return {
+        **state,
+        "messages": updated_messages
+    }
+
+# Routing conditions
+def should_use_classifier(state: AgentState) -> bool:
+    return state["current_worker"] == "supervisor"
+
+def should_use_historical_worker(state: AgentState) -> bool:
+    return state["current_worker"] == "historical"
+
+def should_use_conversational_worker(state: AgentState) -> bool:
+    return state["current_worker"] == "conversational"
+
+def should_use_chitchat_worker(state: AgentState) -> bool:
+    return state["current_worker"] == "chitchat"
+
+def should_format_response(state: AgentState) -> bool:
+    # Format response if we've completed processing with a worker
+    return state["current_worker"] not in ["supervisor", "classifier"]
+
+def is_complete(state: AgentState) -> bool:
+    # Check if we've fully processed this turn of conversation
+    last_user_msg_idx = next((i for i, m in enumerate(reversed(state["messages"])) 
+                         if m.get("role") == "user"), None)
+    last_assistant_msg_idx = next((i for i, m in enumerate(reversed(state["messages"])) 
+                              if m.get("role") == "assistant"), None)
+    
+    # Complete if assistant has responded after the latest user message
+    return last_assistant_msg_idx is not None and (
+        last_user_msg_idx is None or last_assistant_msg_idx < last_user_msg_idx)
+
+# Build the graph
+def build_supervisor_graph():
+    workflow = StateGraph(AgentState)
+    
+    # Add nodes
+    workflow.add_node("supervisor", supervisor)
+    workflow.add_node("classifier", classify_message)
+    workflow.add_node("historical_worker", historical_rules_worker)
+    workflow.add_node("conversational_worker", conversational_action_worker)
+    workflow.add_node("chitchat_worker", chitchat_worker)
+    workflow.add_node("format_response", format_response)
+    
+    # Add edges
+    workflow.add_conditional_edges(
+        "supervisor",
+        {
+            should_use_classifier: "classifier",
+            is_complete: END
+        }
+    )
+    
+    workflow.add_edge("classifier", "supervisor")
+    
+    workflow.add_conditional_edges(
+        "supervisor",
+        {
+            should_use_historical_worker: "historical_worker",
+            should_use_conversational_worker: "conversational_worker",
+            should_use_chitchat_worker: "chitchat_worker"
+        }
+    )
+    
+    # Connect workers back to supervisor
+    workflow.add_edge("historical_worker", "supervisor")
+    workflow.add_edge("conversational_worker", "supervisor")
+    workflow.add_edge("chitchat_worker", "supervisor")
+    
+    # Add response formatting
+    workflow.add_conditional_edges(
+        "supervisor",
+        {
+            should_format_response: "format_response"
+        }
+    )
+    
+    workflow.add_edge("format_response", "supervisor")
+    
+    # Compile the graph
+    return workflow.compile()
+
+# Initialize the agent
+def init_supervisor_agent():
+    agent = build_supervisor_graph()
+    
+    # Initialize with empty state
+    initial_state = {
+        "messages": [],
+        "active_incidents": [],
+        "current_thread_id": "main",
+        "current_worker": "supervisor",
+        "classification": None,
+        "pending_transitions": [],
+        "context": {},
+        "historical_agent_state": None,
+        "action_state": None,
+        "session_summary": {}
+    }
+    
+    return agent, initial_state
+
+# Example of connecting to your existing langgraph agent
+def connect_existing_historical_agent(historical_agent, supervisor_state):
+    """
+    This function shows how to integrate your existing langgraph agent
+    into the new supervisor architecture
+    """
+    # Extract relevant context for the historical agent
+    incident_id = supervisor_state["current_thread_id"]
+    incident = next((inc for inc in supervisor_state["active_incidents"] 
+                     if inc["id"] == incident_id), None)
+    
+    if not incident:
+        return supervisor_state
+    
+    # Prepare input state for your existing agent
+    # This will depend on the specific input format your agent expects
+    historical_input = {
+        "query": incident["messages"][-1]["content"],
+        "context": supervisor_state["context"].get(incident_id, {})
+    }
+    
+    # Call your existing agent
+    historical_result = historical_agent.invoke(historical_input)
+    
+    # Update supervisor state with results
+    return {
+        **supervisor_state,
+        "historical_agent_state": historical_result,
+        "context": {
+            **supervisor_state["context"],
+            incident_id: {
+                **supervisor_state["context"].get(incident_id, {}),
+                "historical_result": historical_result
+            }
+        }
+    }
+
+# Usage example
+def example_usage():
+    # Create the supervisor agent
+    supervisor_agent, initial_state = init_supervisor_agent()
+    
+    # Process a user message
+    user_message = {
+        "role": "user",
+        "content": "I'm having an issue with our payment processing system. Transactions are being declined."
+    }
+    
+    # Add message to state
+    state = {
+        **initial_state,
+        "messages": initial_state["messages"] + [user_message]
+    }
+    
+    # Process the message through the graph
+    result = supervisor_agent.invoke(state)
+    
+    # Result now contains the updated state with responses
+    return result
+```
+
+## Integration Strategy with Existing Langgraph Agent
+
+To connect your existing langgraph agent as a worker, you have several options:
+
+### 1. Direct Function Call Integration
+
+```python
+# Import your existing langgraph agent
+from your_existing_module import historical_agent
+
+def historical_rules_worker(state: AgentState) -> AgentState:
+    # Extract necessary context
+    incident_id = state["current_thread_id"]
+    latest_message = state["messages"][-1]["content"]
+    
+    # Prepare input for your existing agent
+    historical_input = {
+        "query": latest_message,
+        "context": state["context"].get(incident_id, {})
+    }
+    
+    # Call your existing agent directly
+    historical_result = historical_agent.invoke(historical_input)
+    
+    # Add results to state
+    return {
+        **state,
+        "historical_agent_state": historical_result,
+        "context": {
+            **state["context"],
+            incident_id: {
+                **state["context"].get(incident_id, {}),
+                "historical_result": historical_result
+            }
+        },
+        "current_worker": "supervisor"  # Return to supervisor
+    }
+```
+
+### 2. API-Based Integration
+
+If your historical agent is deployed as a service:
+
+```python
+import requests
+
+def historical_rules_worker(state: AgentState) -> AgentState:
+    # Extract necessary context
+    incident_id = state["current_thread_id"]
+    latest_message = state["messages"][-1]["content"]
+    
+    # Call your API
+    response = requests.post(
+        "https://your-historical-agent-endpoint.com/invoke",
+        json={
+            "query": latest_message,
+            "context": state["context"].get(incident_id, {})
+        }
+    )
+    
+    historical_result = response.json()
+    
+    # Add results to state
+    return {
+        **state,
+        "historical_agent_state": historical_result,
+        # Additional state updates...
+    }
+```
+
+### 3. Subprocess Integration
+
+For large, complex agents that need separate execution environments:
+
+```python
+import subprocess
+impor
