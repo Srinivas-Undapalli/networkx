@@ -1,0 +1,806 @@
+# Conversational Action Agent for Incident Resolution
+
+I'll focus exclusively on developing the conversational action agent that handles incident resolution after historical processing. This agent will be capable of analyzing data, executing APIs, and providing seamless responses based on user instructions.
+
+## Implementation
+
+```python
+from typing import Dict, List, Any, Optional, TypedDict, Union
+from pydantic import BaseModel, Field
+import json
+import requests
+from datetime import datetime
+from langgraph.graph import StateGraph
+from langchain.tools import Tool
+from langchain_openai import ChatOpenAI
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain_core.prompts import ChatPromptTemplate
+from langgraph.prebuilt import ToolNode
+
+# Define our state
+class ConversationalAgentState(TypedDict):
+    messages: List[Dict[str, Any]]  # Conversation history
+    incident_id: Optional[str]  # Current incident ID
+    customer_data: Optional[Dict[str, Any]]  # Customer backend data
+    historical_result: Optional[Dict[str, Any]]  # Result from historical agent
+    traversal_path: Optional[List[str]]  # Rules traversed
+    available_apis: Dict[str, Dict[str, Any]]  # Available resolution APIs
+    api_results: Dict[str, Any]  # Results from API calls
+    additional_context: Dict[str, Any]  # Any other context
+
+# Define API models for type safety
+class ApiRequest(BaseModel):
+    api_name: str
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    
+class ApiResponse(BaseModel):
+    success: bool
+    result: Any
+    error: Optional[str] = None
+
+# Initialize LLM
+llm = ChatOpenAI(temperature=0.2)
+
+#---------- TOOLS ----------#
+
+# Tool to fetch customer data
+def fetch_customer_data(customer_id: str) -> Dict[str, Any]:
+    """
+    Fetch customer data from backend systems
+    
+    Args:
+        customer_id: The unique identifier for the customer
+        
+    Returns:
+        Dict containing customer information
+    """
+    # In production, this would call your actual APIs/databases
+    # Simulated response for demonstration
+    return {
+        "customer_id": customer_id,
+        "account_details": {
+            "subscription_tier": "enterprise",
+            "account_status": "active",
+            "billing_cycle": "monthly"
+        },
+        "system_access": {
+            "permissions": ["admin", "billing", "support"],
+            "last_login": "2025-05-01T14:30:00Z",
+            "active_services": ["payment_gateway", "user_management", "analytics"]
+        },
+        "historical_incidents": [
+            {
+                "incident_id": "INC-2023-1045",
+                "date": "2023-10-12",
+                "type": "payment_failure",
+                "resolution": "API key rotation"
+            },
+            {
+                "incident_id": "INC-2024-0356",
+                "date": "2024-03-23",
+                "type": "access_denied",
+                "resolution": "permissions update"
+            }
+        ]
+    }
+
+# Tool to execute resolution APIs
+def execute_api(api_request_str: str) -> Dict[str, Any]:
+    """
+    Execute a resolution API with given parameters
+    
+    Args:
+        api_request_str: JSON string containing:
+            - api_name: Name of the API to execute
+            - parameters: Dictionary of parameters for the API
+            
+    Returns:
+        Dict containing the API response
+    """
+    try:
+        # Parse the input JSON
+        if isinstance(api_request_str, str):
+            api_request_dict = json.loads(api_request_str)
+        else:
+            api_request_dict = api_request_str
+            
+        api_request = ApiRequest(
+            api_name=api_request_dict.get("api_name", ""),
+            parameters=api_request_dict.get("parameters", {})
+        )
+    except json.JSONDecodeError:
+        return {
+            "success": False,
+            "result": None,
+            "error": "Invalid JSON format for API request"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "result": None,
+            "error": f"Error parsing API request: {str(e)}"
+        }
+    
+    # Dictionary of available APIs and their simulated responses
+    available_apis = {
+        "reset_user_permissions": {
+            "success": True,
+            "result": {
+                "permission_update": "completed",
+                "affected_services": ["payment_gateway", "user_management"],
+                "timestamp": datetime.now().isoformat()
+            }
+        },
+        "rotate_api_keys": {
+            "success": True,
+            "result": {
+                "old_key": "sk_old_redacted",
+                "new_key": "sk_new_redacted",
+                "expiry": "30 days",
+                "affected_services": ["payment_gateway"]
+            }
+        },
+        "restart_service": {
+            "success": True,
+            "result": {
+                "service": api_request.parameters.get("service", "payment_gateway"),
+                "status": "restarted",
+                "downtime": "30 seconds"
+            }
+        },
+        "clear_cache": {
+            "success": True,
+            "result": {
+                "cache_type": api_request.parameters.get("cache_type", "user_sessions"),
+                "entries_cleared": 145,
+                "status": "completed"
+            }
+        }
+    }
+    
+    api_name = api_request.api_name
+    
+    if api_name not in available_apis:
+        return {
+            "success": False,
+            "result": None,
+            "error": f"API '{api_name}' not found. Available APIs: {', '.join(available_apis.keys())}"
+        }
+    
+    # In real implementation, would call the actual API with parameters
+    result = available_apis[api_name]
+    
+    # Log the API call (in production, you'd have proper logging)
+    print(f"API executed: {api_name} with parameters {api_request.parameters}")
+    
+    return result
+
+# Tool to analyze transaction logs
+def analyze_transaction_logs(incident_id: str, timeframe: str = "24h") -> Dict[str, Any]:
+    """
+    Analyze transaction logs related to the incident
+    
+    Args:
+        incident_id: The incident ID to analyze
+        timeframe: Time period to analyze (e.g., "24h", "7d")
+        
+    Returns:
+        Dict containing analysis results
+    """
+    # In production, this would query your log analysis systems
+    return {
+        "incident_id": incident_id,
+        "timeframe": timeframe,
+        "total_transactions": 1245,
+        "failed_transactions": 28,
+        "error_types": {
+            "timeout": 12,
+            "authentication_failure": 10,
+            "validation_error": 6
+        },
+        "affected_services": ["payment_gateway"],
+        "peak_error_time": "2025-05-07T15:45:00Z"
+    }
+
+# Tool to fetch service status
+def get_service_status(service_name: str) -> Dict[str, Any]:
+    """
+    Get current status of a service
+    
+    Args:
+        service_name: Name of the service to check
+        
+    Returns:
+        Dict containing service status information
+    """
+    services = {
+        "payment_gateway": {
+            "status": "degraded",
+            "uptime": "99.7%",
+            "active_instances": 5,
+            "last_incident": "2025-05-07T10:15:00Z",
+            "response_time": "245ms"
+        },
+        "user_management": {
+            "status": "operational",
+            "uptime": "99.99%",
+            "active_instances": 8,
+            "last_incident": "2025-04-23T08:30:00Z",
+            "response_time": "120ms"
+        },
+        "analytics": {
+            "status": "operational",
+            "uptime": "99.95%",
+            "active_instances": 3,
+            "last_incident": "2025-05-01T14:20:00Z",
+            "response_time": "350ms"
+        }
+    }
+    
+    if service_name not in services:
+        return {
+            "error": f"Service '{service_name}' not found",
+            "available_services": list(services.keys())
+        }
+    
+    return services[service_name]
+
+# Tool to check similar incidents
+def find_similar_incidents(error_code: str, service_name: str) -> List[Dict[str, Any]]:
+    """
+    Find similar past incidents based on error code and service
+    
+    Args:
+        error_code: The error code to match
+        service_name: The service name to match
+        
+    Returns:
+        List of similar incidents
+    """
+    # In production, this would query your incident database
+    similar_incidents = [
+        {
+            "incident_id": "INC-2024-0987",
+            "date": "2024-12-15",
+            "error_code": "AUTH_FAILURE_503",
+            "service": "payment_gateway",
+            "resolution": "API key rotation resolved the issue",
+            "resolution_time": "45 minutes"
+        },
+        {
+            "incident_id": "INC-2024-1245",
+            "date": "2024-07-22",
+            "error_code": "AUTH_FAILURE_503",
+            "service": "payment_gateway",
+            "resolution": "Restarted auth service after config update",
+            "resolution_time": "30 minutes"
+        }
+    ]
+    
+    return similar_incidents
+
+# Create LangChain tools
+tools = [
+    Tool.from_function(
+        func=fetch_customer_data,
+        name="fetch_customer_data",
+        description="Fetch detailed customer data including account details, system access, and historical incidents"
+    ),
+    Tool.from_function(
+        func=execute_api,
+        name="execute_api",
+        description="Execute a resolution API with given parameters. Input should be a JSON string with 'api_name' and 'parameters' fields."
+    ),
+    Tool.from_function(
+        func=analyze_transaction_logs,
+        name="analyze_transaction_logs",
+        description="Analyze transaction logs related to an incident"
+    ),
+    Tool.from_function(
+        func=get_service_status,
+        name="get_service_status",
+        description="Get the current status of a specific service"
+    ),
+    Tool.from_function(
+        func=find_similar_incidents,
+        name="find_similar_incidents",
+        description="Find similar past incidents based on error code and service"
+    )
+]
+
+#---------- CONVERSATIONAL AGENT ----------#
+
+# Function to create the conversational agent
+def create_conversational_agent(state: ConversationalAgentState):
+    """
+    Creates a conversational agent with access to tools and historical context
+    
+    Args:
+        state: The current state containing historical data and context
+        
+    Returns:
+        AgentExecutor: The configured agent executor
+    """
+    # Extract relevant information from state
+    historical_result = state.get("historical_result", {})
+    incident_id = state.get("incident_id", "unknown")
+    customer_data = state.get("customer_data", {})
+    traversal_path = state.get("traversal_path", [])
+    
+    # Format traversal path for prompt
+    traversal_path_str = ", ".join(traversal_path) if traversal_path else "None"
+    
+    # Format contextual data
+    contextual_data = json.dumps(historical_result.get("contextual_data", {}), indent=2)
+    
+    # List available APIs
+    available_apis = state.get("available_apis", {})
+    api_descriptions = "\n".join([
+        f"- {name}: {details.get('description', 'No description')} (Parameters: {', '.join(details.get('parameters', []))})"
+        for name, details in available_apis.items()
+    ])
+    
+    # Create a prompt for the conversational agent
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", f"""
+You are an incident resolution specialist responding to user questions after a historical business rules analysis found no resolution.
+
+CONTEXT FROM HISTORICAL ANALYSIS:
+- Incident ID: {incident_id}
+- Issue Type: {historical_result.get("issue_type", "Unknown")}
+- Customer ID: {historical_result.get("customer_id", "Unknown")}
+- Error Information: {historical_result.get("contextual_data", {}).get("error_code", "Unknown")}
+- Affected Service: {historical_result.get("contextual_data", {}).get("affected_service", "Unknown")}
+- Business Rules Traversed: {traversal_path_str}
+- Reasoning: {historical_result.get("reasoning", "No resolution found in business rules")}
+
+AVAILABLE RESOLUTION APIS:
+{api_descriptions}
+
+INSTRUCTIONS:
+1. Help the user troubleshoot and resolve their incident
+2. Use available tools to gather information and take actions
+3. Before executing any APIs that make changes, confirm with the user
+4. Be specific and precise in your responses
+5. If you don't have enough information, ask clarifying questions
+6. If you can't perform an action, explain clearly why not
+7. Refer to similar past incidents when relevant
+
+For APIs that make system changes:
+- Explain what the API will do before executing it
+- Confirm with the user before proceeding
+- Report results clearly after execution
+- Follow up to verify the change resolved the issue
+        """),
+        ("human", "{input}")
+    ])
+    
+    # Create a React agent
+    agent = create_react_agent(llm, tools, prompt)
+    
+    # Create an agent executor
+    agent_executor = AgentExecutor(
+        agent=agent, 
+        tools=tools, 
+        verbose=True,
+        handle_parsing_errors=True,
+        max_iterations=8
+    )
+    
+    return agent_executor
+
+# Main conversational agent worker
+def conversational_action_worker(state: ConversationalAgentState) -> ConversationalAgentState:
+    """
+    Worker that handles all interaction after historical agent processing
+    
+    Args:
+        state: Current state containing historical data and context
+        
+    Returns:
+        Updated state with agent's response
+    """
+    # Extract messages and last message
+    messages = state["messages"]
+    last_message = messages[-1] if messages else {"content": ""}
+    
+    # Skip if not a user message
+    if last_message.get("role") != "user":
+        return state
+    
+    # Get context from historical agent
+    historical_result = state.get("historical_result", {})
+    incident_id = state.get("incident_id")
+    
+    if not historical_result or not incident_id:
+        response = "I need more context about the incident. Could you provide an incident number first?"
+        return {
+            **state,
+            "messages": messages + [{"role": "assistant", "content": response}]
+        }
+    
+    # Create agent with context
+    agent = create_conversational_agent(state)
+    
+    # Prepare input for agent
+    agent_input = {"input": last_message["content"]}
+    
+    # Execute agent
+    try:
+        agent_result = agent.invoke(agent_input)
+        response = agent_result["output"]
+        
+        # Update API results if any API was executed
+        updated_api_results = state.get("api_results", {})
+        for i, step in enumerate(agent_result.get("intermediate_steps", [])):
+            tool = step[0]
+            result = step[1]
+            
+            # If an API was executed, capture the result
+            if tool.tool == "execute_api":
+                try:
+                    # Extract API name from the input
+                    if isinstance(tool.tool_input, str):
+                        api_input = json.loads(tool.tool_input)
+                    else:
+                        api_input = tool.tool_input
+                    
+                    api_name = api_input.get("api_name")
+                    if api_name:
+                        # Record API execution result
+                        timestamp = datetime.now().isoformat()
+                        updated_api_results[f"{api_name}_{timestamp}"] = {
+                            "api_name": api_name,
+                            "parameters": api_input.get("parameters", {}),
+                            "result": result,
+                            "timestamp": timestamp
+                        }
+                except:
+                    # If parsing fails, just store the raw result
+                    timestamp = datetime.now().isoformat()
+                    updated_api_results[f"api_call_{timestamp}"] = {
+                        "raw_input": tool.tool_input,
+                        "result": result,
+                        "timestamp": timestamp
+                    }
+        
+        # Update state with the response and API results
+        return {
+            **state,
+            "messages": messages + [{"role": "assistant", "content": response}],
+            "api_results": updated_api_results
+        }
+    except Exception as e:
+        # Handle errors
+        error_message = str(e)
+        response = f"I encountered an error while processing your request: {error_message}. Could you try rephrasing or specifying a different action?"
+        
+        return {
+            **state,
+            "messages": messages + [{"role": "assistant", "content": response}],
+            "additional_context": {
+                **state.get("additional_context", {}),
+                "last_error": {
+                    "message": error_message,
+                    "timestamp": datetime.now().isoformat()
+                }
+            }
+        }
+
+#---------- GRAPH CREATION ----------#
+
+# Create the conversational agent graph
+def create_conversational_agent_graph():
+    """
+    Creates the langgraph for the conversational agent
+    
+    Returns:
+        Compiled StateGraph
+    """
+    # Create a simple graph with just the conversational action worker
+    workflow = StateGraph(ConversationalAgentState)
+    
+    # Add the node
+    workflow.add_node("conversational_action", conversational_action_worker)
+    
+    # Set the entry point
+    workflow.set_entry_point("conversational_action")
+    
+    # Add a self-loop for continuous conversation
+    workflow.add_edge("conversational_action", "conversational_action")
+    
+    # Compile the graph
+    return workflow.compile()
+
+#---------- USAGE ----------#
+
+# Function to initialize the agent state from historical data
+def initialize_from_historical_data(historical_result: Dict[str, Any]) -> ConversationalAgentState:
+    """
+    Initialize the conversational agent state from historical data
+    
+    Args:
+        historical_result: Result from historical agent
+        
+    Returns:
+        Initialized state
+    """
+    # Extract incident ID and customer ID
+    incident_id = historical_result.get("incident_id")
+    customer_id = historical_result.get("customer_id")
+    
+    # Get customer data
+    customer_data = None
+    if customer_id:
+        customer_data = fetch_customer_data(customer_id)
+    
+    # Initialize with available APIs
+    available_apis = {
+        "reset_user_permissions": {
+            "description": "Reset user permissions for specified services",
+            "parameters": ["user_id", "services"]
+        },
+        "rotate_api_keys": {
+            "description": "Rotate API keys for a service",
+            "parameters": ["service", "expiry"]
+        },
+        "restart_service": {
+            "description": "Restart a specific service",
+            "parameters": ["service"]
+        },
+        "clear_cache": {
+            "description": "Clear cache for a specific service",
+            "parameters": ["cache_type"]
+        }
+    }
+    
+    # Create initial message
+    initial_message = {
+        "role": "assistant",
+        "content": f"""
+I've analyzed incident {incident_id} but couldn't find a direct resolution in our business rules.
+
+This appears to be a {historical_result.get("issue_type")} with error code {historical_result.get("contextual_data", {}).get("error_code")} affecting the {historical_result.get("contextual_data", {}).get("affected_service")} service.
+
+I can help you troubleshoot this further. Would you like me to:
+1. Analyze recent transaction logs
+2. Check for similar past incidents
+3. Execute a specific resolution action
+4. Something else?
+        """
+    }
+    
+    # Create initial state
+    initial_state = {
+        "messages": [initial_message],
+        "incident_id": incident_id,
+        "customer_data": customer_data,
+        "historical_result": historical_result,
+        "traversal_path": historical_result.get("traversal_path", []),
+        "available_apis": available_apis,
+        "api_results": {},
+        "additional_context": {}
+    }
+    
+    return initial_state
+
+# Function to run the conversational agent
+def run_conversational_agent(user_message: str, state: ConversationalAgentState) -> ConversationalAgentState:
+    """
+    Run the conversational agent with a user message
+    
+    Args:
+        user_message: Message from the user
+        state: Current state
+        
+    Returns:
+        Updated state with agent's response
+    """
+    # Create agent graph
+    agent_graph = create_conversational_agent_graph()
+    
+    # Add user message to state
+    updated_state = {
+        **state,
+        "messages": state["messages"] + [{"role": "user", "content": user_message}]
+    }
+    
+    # Run the graph
+    result_state = agent_graph.invoke(updated_state)
+    
+    return result_state
+
+#---------- EXAMPLE USAGE ----------#
+
+# Example of how to use the conversational agent
+def example_usage():
+    """
+    Example showing how to use the conversational agent
+    """
+    # Sample historical data (in production, this would come from your historical agent)
+    historical_data = {
+        "incident_id": "INC-2025-1234",
+        "customer_id": "CUST-5678",
+        "issue_type": "payment_processing_failure",
+        "resolution": None,  # No resolution found
+        "reasoning": "No matching business rule found after traversing knowledge graph.",
+        "traversal_path": ["payment_rules", "gateway_integration", "authentication_flow"],
+        "contextual_data": {
+            "affected_service": "payment_gateway",
+            "error_code": "AUTH_FAILURE_503",
+            "last_successful_transaction": "2025-05-06T23:15:42Z"
+        }
+    }
+    
+    # Initialize state from historical data
+    state = initialize_from_historical_data(historical_data)
+    
+    # Print initial assistant message
+    print(f"Bot: {state['messages'][0]['content']}\n")
+    
+    # Example conversation
+    messages = [
+        "Can you analyze the recent transaction logs to see when this started?",
+        "Are there any similar incidents in our history?",
+        "Let's try rotating the API keys for the payment gateway",
+        "What's the current status of the payment gateway now?",
+        "Great, can you check if the issue is resolved by analyzing recent transactions?"
+    ]
+    
+    # Process each message
+    for message in messages:
+        print(f"User: {message}")
+        state = run_conversational_agent(message, state)
+        print(f"Bot: {state['messages'][-1]['content']}\n")
+    
+    return state
+
+# Function to integrate with a supervisor agent
+def get_conversational_agent_for_supervisor():
+    """
+    Returns a function that can be used as a worker in a supervisor agent
+    
+    Returns:
+        Function that processes state and returns updated state
+    """
+    def process_with_conversational_agent(state):
+        # Extract relevant information from supervisor state
+        historical_result = state.get("historical_result", {})
+        incident_id = state.get("incident_id")
+        messages = state.get("messages", [])
+        
+        # Convert to conversational agent state format
+        conv_state = {
+            "messages": messages,
+            "incident_id": incident_id,
+            "customer_data": state.get("customer_data"),
+            "historical_result": historical_result,
+            "traversal_path": historical_result.get("traversal_path", []),
+            "available_apis": state.get("available_apis", {}),
+            "api_results": state.get("api_results", {}),
+            "additional_context": state.get("additional_context", {})
+        }
+        
+        # Create and run the agent
+        agent_graph = create_conversational_agent_graph()
+        result_state = agent_graph.invoke(conv_state)
+        
+        # Convert back to supervisor state format
+        return {
+            **state,
+            "messages": result_state["messages"],
+            "api_results": result_state["api_results"],
+            "additional_context": result_state["additional_context"]
+        }
+    
+    return process_with_conversational_agent
+```
+
+## Using the Agent
+
+To use this agent in your workflow:
+
+```python
+# Example of how to connect to historical agent and use the conversational agent
+
+# 1. Process with historical agent first (your existing agent)
+def process_incident(incident_id):
+    # Your code to call historical agent
+    historical_result = your_historical_agent.process(incident_id)
+    
+    # If no resolution found, transition to conversational agent
+    if not historical_result.get("resolution"):
+        # Initialize conversational agent state
+        conv_state = initialize_from_historical_data(historical_result)
+        
+        # Return initialized state for further conversation
+        return conv_state
+    else:
+        # Resolution found, return directly
+        return {
+            "messages": [{
+                "role": "assistant",
+                "content": f"Resolution found: {historical_result['resolution']}"
+            }],
+            "incident_id": incident_id,
+            "historical_result": historical_result,
+            "resolved": True
+        }
+
+# 2. Handle ongoing conversation
+def handle_message(user_message, state):
+    # Process with conversational agent
+    updated_state = run_conversational_agent(user_message, state)
+    return updated_state
+```
+
+## Integration with Supervisor
+
+To integrate this into your supervisor architecture:
+
+```python
+from langgraph.prebuilt import SupervisorGraph
+
+def create_incident_resolution_system():
+    # Define the workers
+    workers = {
+        "historical_rules_worker": your_historical_agent_worker,
+        "conversational_action_worker": get_conversational_agent_for_supervisor(),
+        # Add your chitchat worker here if needed
+    }
+    
+    # Create worker selector function
+    def worker_selector(state):
+        # If this is a new incident or we need to check rules, use historical agent
+        if state.get("need_historical_check", True):
+            return "historical_rules_worker"
+        
+        # If historical agent provided no resolution, use conversational agent
+        historical_result = state.get("historical_result", {})
+        if historical_result and historical_result.get("resolution") is None:
+            return "conversational_action_worker"
+        
+        # Default fallback
+        return "conversational_action_worker"
+    
+    # Create supervisor
+    supervisor = SupervisorGraph(
+        workers=workers,
+        worker_selector=worker_selector
+    )
+    
+    return supervisor
+```
+
+## Key Capabilities
+
+1. **Comprehensive Tools**:
+   - Customer data retrieval
+   - Transaction log analysis
+   - Service status checking
+   - API execution for corrective actions
+   - Similar incident lookup
+
+2. **Intelligent Response Handling**:
+   - Handles user instructions for data analysis
+   - Manages API execution with confirmation flows
+   - Provides context-aware suggestions
+   - Shows clear error messages when needed
+
+3. **Stateful Context Management**:
+   - Preserves historical agent data
+   - Tracks API execution results
+   - Maintains conversation continuity
+
+4. **API Execution with Safeguards**:
+   - Confirms with user before executing actions
+   - Validates parameters
+   - Reports execution results clearly
+   - Verifies resolution after actions
+
+5. **Error Handling**:
+   - Manages tool failures gracefully
+   - Provides clear error messages
+   - Offers alternative solutions
+
+This implementation provides a powerful conversational agent that can seamlessly take over from your historical agent, execute actions based on user instructions, and guide the conversation toward resolution.
