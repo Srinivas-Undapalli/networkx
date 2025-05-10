@@ -1,0 +1,879 @@
+Let's switch to a langgraph-native approach using the bind tools option, which should be more reliable for your use case. This approach will leverage langgraph's tool binding capabilities rather than using LangChain's agent implementations.
+
+Here's a complete implementation using langgraph's native approach:
+
+```python
+from typing import Dict, List, Any, Optional, TypedDict, Callable, Union, Annotated
+from pydantic import BaseModel, Field
+import json
+import os
+from datetime import datetime
+from langgraph.graph import StateGraph
+from langgraph.graph.nodes.llm import ToolNode
+from langgraph.prebuilt import ToolExecutor
+from operator import itemgetter
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, FunctionMessage
+from langchain_openai import ChatOpenAI
+
+# Define our state
+class ConversationalAgentState(TypedDict):
+    messages: List[Dict[str, Any]]  # Conversation history
+    incident_id: Optional[str]  # Current incident ID
+    customer_data: Optional[Dict[str, Any]]  # Customer backend data
+    historical_result: Optional[Dict[str, Any]]  # Result from historical agent
+    traversal_path: Optional[List[str]]  # Rules traversed
+    available_apis: Dict[str, Dict[str, Any]]  # Available resolution APIs
+    api_results: Dict[str, Any]  # Results from API calls
+    additional_context: Dict[str, Any]  # Any other context
+    pending_action: Optional[Dict[str, Any]]  # Store action awaiting consent
+    consent_state: Optional[str]  # Can be "awaiting", "approved", "denied", None
+
+# API models
+class ApiRequest(BaseModel):
+    api_name: str
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    
+class ApiResponse(BaseModel):
+    success: bool
+    result: Any
+    error: Optional[str] = None
+
+# Initialize LLM
+llm = ChatOpenAI(temperature=0.2)
+
+#---------- TOOL FUNCTIONS ----------#
+
+# Tool to fetch customer data
+def fetch_customer_data(customer_id: str) -> Dict[str, Any]:
+    """
+    Fetch customer data from backend systems
+    
+    Args:
+        customer_id: The unique identifier for the customer
+        
+    Returns:
+        Dict containing customer information
+    """
+    # Simulated response
+    return {
+        "customer_id": customer_id,
+        "account_details": {
+            "subscription_tier": "enterprise",
+            "account_status": "active",
+            "billing_cycle": "monthly"
+        },
+        "system_access": {
+            "permissions": ["admin", "billing", "support"],
+            "last_login": "2025-05-01T14:30:00Z",
+            "active_services": ["payment_gateway", "user_management", "analytics"]
+        },
+        "historical_incidents": [
+            {
+                "incident_id": "INC-2023-1045",
+                "date": "2023-10-12",
+                "type": "payment_failure",
+                "resolution": "API key rotation"
+            },
+            {
+                "incident_id": "INC-2024-0356",
+                "date": "2024-03-23",
+                "type": "access_denied",
+                "resolution": "permissions update"
+            }
+        ]
+    }
+
+# Tool to execute resolution APIs
+def execute_api(api_request_str: str) -> Dict[str, Any]:
+    """
+    Execute a resolution API with given parameters
+    
+    Args:
+        api_request_str: JSON string containing:
+            - api_name: Name of the API to execute
+            - parameters: Dictionary of parameters for the API
+            
+    Returns:
+        Dict containing the API response
+    """
+    try:
+        # Parse the input JSON
+        if isinstance(api_request_str, str):
+            api_request_dict = json.loads(api_request_str)
+        else:
+            api_request_dict = api_request_str
+            
+        api_request = ApiRequest(
+            api_name=api_request_dict.get("api_name", ""),
+            parameters=api_request_dict.get("parameters", {})
+        )
+    except Exception as e:
+        return {
+            "success": False,
+            "result": None,
+            "error": f"Error parsing API request: {str(e)}"
+        }
+    
+    # Dictionary of available APIs and their simulated responses
+    available_apis = {
+        "reset_user_permissions": {
+            "success": True,
+            "result": {
+                "permission_update": "completed",
+                "affected_services": ["payment_gateway", "user_management"],
+                "timestamp": datetime.now().isoformat()
+            }
+        },
+        "rotate_api_keys": {
+            "success": True,
+            "result": {
+                "old_key": "sk_old_redacted",
+                "new_key": "sk_new_redacted",
+                "expiry": "30 days",
+                "affected_services": ["payment_gateway"]
+            }
+        },
+        "restart_service": {
+            "success": True,
+            "result": {
+                "service": api_request.parameters.get("service", "payment_gateway"),
+                "status": "restarted",
+                "downtime": "30 seconds"
+            }
+        },
+        "clear_cache": {
+            "success": True,
+            "result": {
+                "cache_type": api_request.parameters.get("cache_type", "user_sessions"),
+                "entries_cleared": 145,
+                "status": "completed"
+            }
+        }
+    }
+    
+    api_name = api_request.api_name
+    
+    if api_name not in available_apis:
+        return {
+            "success": False,
+            "result": None,
+            "error": f"API '{api_name}' not found. Available APIs: {', '.join(available_apis.keys())}"
+        }
+    
+    # Simulate API call
+    result = available_apis[api_name]
+    
+    return result
+
+# Tool to analyze transaction logs
+def analyze_transaction_logs(incident_id: str, timeframe: str = "24h") -> Dict[str, Any]:
+    """
+    Analyze transaction logs related to the incident
+    
+    Args:
+        incident_id: The incident ID to analyze
+        timeframe: Time period to analyze (e.g., "24h", "7d")
+        
+    Returns:
+        Dict containing analysis results
+    """
+    # Simulated response
+    return {
+        "incident_id": incident_id,
+        "timeframe": timeframe,
+        "total_transactions": 1245,
+        "failed_transactions": 28,
+        "error_types": {
+            "timeout": 12,
+            "authentication_failure": 10,
+            "validation_error": 6
+        },
+        "affected_services": ["payment_gateway"],
+        "peak_error_time": "2025-05-07T15:45:00Z"
+    }
+
+# Tool to fetch service status
+def get_service_status(service_name: str) -> Dict[str, Any]:
+    """
+    Get current status of a service
+    
+    Args:
+        service_name: Name of the service to check
+        
+    Returns:
+        Dict containing service status information
+    """
+    services = {
+        "payment_gateway": {
+            "status": "degraded",
+            "uptime": "99.7%",
+            "active_instances": 5,
+            "last_incident": "2025-05-07T10:15:00Z",
+            "response_time": "245ms"
+        },
+        "user_management": {
+            "status": "operational",
+            "uptime": "99.99%",
+            "active_instances": 8,
+            "last_incident": "2025-04-23T08:30:00Z",
+            "response_time": "120ms"
+        },
+        "analytics": {
+            "status": "operational",
+            "uptime": "99.95%",
+            "active_instances": 3,
+            "last_incident": "2025-05-01T14:20:00Z",
+            "response_time": "350ms"
+        }
+    }
+    
+    if service_name not in services:
+        return {
+            "error": f"Service '{service_name}' not found",
+            "available_services": list(services.keys())
+        }
+    
+    return services[service_name]
+
+# Tool to check similar incidents
+def find_similar_incidents(error_code: str, service_name: str) -> List[Dict[str, Any]]:
+    """
+    Find similar past incidents based on error code and service
+    
+    Args:
+        error_code: The error code to match
+        service_name: The service name to match
+        
+    Returns:
+        List of similar incidents
+    """
+    # Simulated response
+    similar_incidents = [
+        {
+            "incident_id": "INC-2024-0987",
+            "date": "2024-12-15",
+            "error_code": "AUTH_FAILURE_503",
+            "service": "payment_gateway",
+            "resolution": "API key rotation resolved the issue",
+            "resolution_time": "45 minutes"
+        },
+        {
+            "incident_id": "INC-2024-1245",
+            "date": "2024-07-22",
+            "error_code": "AUTH_FAILURE_503",
+            "service": "payment_gateway",
+            "resolution": "Restarted auth service after config update",
+            "resolution_time": "30 minutes"
+        }
+    ]
+    
+    return similar_incidents
+
+#---------- LANGGRAPH NODES ----------#
+
+# Define tool bindings
+tools = {
+    "fetch_customer_data": fetch_customer_data,
+    "execute_api": execute_api,
+    "analyze_transaction_logs": analyze_transaction_logs,
+    "get_service_status": get_service_status,
+    "find_similar_incidents": find_similar_incidents
+}
+
+# Create a tool executor for direct tool execution
+tool_executor = ToolExecutor(tools)
+
+# Node to detect when API execution is requested
+def detect_api_execution(state: ConversationalAgentState) -> ConversationalAgentState:
+    """
+    Process messages to detect API execution requests that need consent
+    """
+    messages = state["messages"]
+    
+    # Check if the last message is from the agent and contains API execution intent
+    if messages and messages[-1].get("role") == "assistant":
+        content = messages[-1].get("content", "")
+        
+        # Simple regex patterns to detect API execution attempts
+        api_patterns = [
+            r"execute_api\((.*?)\)",
+            r"I recommend executing the (.*?) API",
+            r"Let's run the (.*?) API",
+            r"I'll execute the (.*?) API",
+            r"We should execute (.*?) to resolve"
+        ]
+        
+        api_name = None
+        for pattern in api_patterns:
+            import re
+            match = re.search(pattern, content)
+            if match:
+                api_name = match.group(1).strip().strip('"\'')
+                break
+        
+        if api_name:
+            # Extract parameters if possible
+            params = {}
+            param_match = re.search(r"parameters[: ]+(.*?})", content, re.DOTALL)
+            if param_match:
+                try:
+                    param_str = param_match.group(1).strip()
+                    # Handle cases where parameters might be described rather than in JSON
+                    if param_str.startswith("{") and param_str.endswith("}"):
+                        params = json.loads(param_str)
+                except:
+                    # If parsing fails, use empty parameters
+                    params = {}
+            
+            # Create action details
+            action_details = {
+                "action_type": "API Execution",
+                "api_name": api_name,
+                "parameters": params,
+                "description": get_api_description(api_name, state)
+            }
+            
+            # Request consent
+            return request_consent_for_action(state, action_details)
+    
+    # No API execution detected, return unchanged state
+    return state
+
+# Node to get user consent
+def request_consent_for_action(state: ConversationalAgentState, action_details: Dict[str, Any]) -> ConversationalAgentState:
+    """
+    Request user consent for an action
+    """
+    api_name = action_details.get("api_name", "unknown")
+    parameters = action_details.get("parameters", {})
+    description = action_details.get("description", "No description available")
+    
+    # Create a consent request message
+    consent_message = f"""
+I need your approval before executing this action:
+
+ACTION: {api_name}
+DESCRIPTION: {description}
+PARAMETERS: {json.dumps(parameters, indent=2)}
+IMPACT: This will make changes to your system that may affect service operation.
+
+Please respond with 'yes' to approve or 'no' to cancel this action.
+"""
+    
+    # Update state with pending action and consent request
+    return {
+        **state,
+        "messages": state["messages"] + [{"role": "assistant", "content": consent_message}],
+        "pending_action": action_details,
+        "consent_state": "awaiting"
+    }
+
+# Node to check user consent response
+def process_consent_response(state: ConversationalAgentState) -> Dict[str, str]:
+    """
+    Process user's response to a consent request
+    Returns a routing decision
+    """
+    # Check if we're awaiting consent
+    consent_state = state.get("consent_state")
+    pending_action = state.get("pending_action")
+    
+    if consent_state != "awaiting" or not pending_action:
+        return {"decision": "continue"}
+    
+    # Get the user's response
+    messages = state.get("messages", [])
+    if not messages:
+        return {"decision": "continue"}
+    
+    last_message = messages[-1]
+    if last_message.get("role") != "user":
+        return {"decision": "continue"}
+    
+    # Analyze the response
+    user_response = last_message.get("content", "").lower()
+    
+    # Check for approval or denial
+    affirmative_responses = ["yes", "sure", "approve", "confirmed", "go ahead", "proceed", "ok", "okay", "do it", "execute", "run it"]
+    negative_responses = ["no", "don't", "stop", "wait", "cancel", "deny", "negative", "hold on", "abort"]
+    
+    if any(response in user_response for response in affirmative_responses):
+        return {"decision": "execute_action"}
+    elif any(response in user_response for response in negative_responses):
+        return {"decision": "cancel_action"}
+    else:
+        return {"decision": "unclear_response"}
+
+# Node to execute approved action
+def execute_approved_action(state: ConversationalAgentState) -> ConversationalAgentState:
+    """
+    Execute an action that has received user consent
+    """
+    pending_action = state.get("pending_action", {})
+    api_name = pending_action.get("api_name", "unknown")
+    parameters = pending_action.get("parameters", {})
+    
+    try:
+        # Format the API request
+        api_request = json.dumps({
+            "api_name": api_name,
+            "parameters": parameters
+        })
+        
+        # Execute the API
+        api_result = execute_api(api_request)
+        
+        # Format a response with the results
+        if api_result.get("success", False):
+            response = f"""
+I've successfully executed the {api_name} action.
+
+RESULT:
+{json.dumps(api_result.get("result", {}), indent=2)}
+
+Would you like me to do anything else to help resolve this incident?
+"""
+        else:
+            response = f"""
+The {api_name} action failed with the following error:
+{api_result.get("error", "Unknown error occurred")}
+
+Would you like to try a different approach?
+"""
+        
+        # Update API results in state
+        api_results = state.get("api_results", {})
+        timestamp = datetime.now().isoformat()
+        api_results[f"{api_name}_{timestamp}"] = {
+            "api_name": api_name,
+            "parameters": parameters,
+            "result": api_result,
+            "timestamp": timestamp
+        }
+        
+        # Return updated state
+        return {
+            **state,
+            "messages": state["messages"] + [{"role": "assistant", "content": response}],
+            "api_results": api_results,
+            "pending_action": None,
+            "consent_state": None
+        }
+    except Exception as e:
+        # Handle execution errors
+        error_message = str(e)
+        response = f"""
+I encountered an error while executing the {api_name} action:
+{error_message}
+
+Would you like to try again or take a different approach?
+"""
+        
+        return {
+            **state,
+            "messages": state["messages"] + [{"role": "assistant", "content": response}],
+            "pending_action": None,
+            "consent_state": None,
+            "additional_context": {
+                **state.get("additional_context", {}),
+                "last_error": {
+                    "message": error_message,
+                    "timestamp": datetime.now().isoformat()
+                }
+            }
+        }
+
+# Node to handle unclear consent response
+def handle_unclear_consent(state: ConversationalAgentState) -> ConversationalAgentState:
+    """
+    Handle unclear response to consent request
+    """
+    pending_action = state.get("pending_action", {})
+    api_name = pending_action.get("api_name", "unknown")
+    
+    response = f"""
+I need your clear confirmation before proceeding with the {api_name} action.
+Please respond with 'yes' to approve or 'no' to cancel.
+"""
+    
+    return {
+        **state,
+        "messages": state["messages"] + [{"role": "assistant", "content": response}]
+    }
+
+# Node to handle canceled action
+def handle_canceled_action(state: ConversationalAgentState) -> ConversationalAgentState:
+    """
+    Handle a canceled action
+    """
+    response = "I've canceled the action. What would you like to do instead?"
+    
+    return {
+        **state,
+        "messages": state["messages"] + [{"role": "assistant", "content": response}],
+        "pending_action": None,
+        "consent_state": None
+    }
+
+# Node to extract context for LLM
+def get_context_for_llm(state: ConversationalAgentState) -> Dict[str, Any]:
+    """
+    Extract relevant context from state for the LLM
+    """
+    historical_result = state.get("historical_result", {})
+    incident_id = state.get("incident_id", "unknown")
+    traversal_path = state.get("traversal_path", [])
+    available_apis = state.get("available_apis", {})
+    
+    # Format traversal path
+    traversal_path_str = ", ".join(traversal_path) if traversal_path else "None"
+    
+    # Format API descriptions
+    api_descriptions = "\n".join([
+        f"- {name}: {details.get('description', 'No description')} (Parameters: {', '.join(details.get('parameters', []))})"
+        for name, details in available_apis.items()
+    ])
+    
+    # Build system message
+    system_message = f"""
+You are an incident resolution specialist responding to user questions after a historical business rules analysis found no resolution.
+
+CONTEXT FROM HISTORICAL ANALYSIS:
+- Incident ID: {incident_id}
+- Issue Type: {historical_result.get("issue_type", "Unknown")}
+- Customer ID: {historical_result.get("customer_id", "Unknown")}
+- Error Information: {historical_result.get("contextual_data", {}).get("error_code", "Unknown")}
+- Affected Service: {historical_result.get("contextual_data", {}).get("affected_service", "Unknown")}
+- Business Rules Traversed: {traversal_path_str}
+- Reasoning: {historical_result.get("reasoning", "No resolution found in business rules")}
+
+AVAILABLE RESOLUTION APIS:
+{api_descriptions}
+
+INSTRUCTIONS:
+1. Help the user troubleshoot and resolve the incident by analyzing data and suggesting actions
+2. For system-modifying APIs like execute_api:
+   - DO NOT execute these directly
+   - Instead, clearly explain what API you recommend using and why
+   - Describe the parameters you would use
+   - The system will handle getting user consent
+
+3. Be specific and precise in your analysis and recommendations
+4. If you need more information, ask clarifying questions
+5. Refer to similar past incidents when relevant
+6. Focus on resolving the user's issue step by step
+"""
+    
+    # Extract messages for the LLM
+    chat_history = [
+        SystemMessage(content=system_message)
+    ]
+    
+    for message in state.get("messages", []):
+        role = message.get("role", "")
+        content = message.get("content", "")
+        
+        if role == "user":
+            chat_history.append(HumanMessage(content=content))
+        elif role == "assistant":
+            chat_history.append(AIMessage(content=content))
+        elif role == "function":
+            chat_history.append(FunctionMessage(name=message.get("name", "function"), content=content))
+    
+    return {
+        "messages": chat_history
+    }
+
+# Node to create the LLM processor with tools
+def create_llm_node():
+    """
+    Create a ToolNode with the LLM and tools
+    """
+    # Create system message
+    system_message = """
+You are an incident resolution specialist who helps analyze and resolve incidents.
+When suggesting an API to run, describe it clearly but DO NOT execute it directly.
+"""
+    
+    # Create the LLM node with tools
+    llm_with_tools = ToolNode(llm, tools)
+    
+    return llm_with_tools
+
+# Get API description from available APIs
+def get_api_description(api_name: str, state: ConversationalAgentState) -> str:
+    """Get description for an API from available APIs"""
+    available_apis = state.get("available_apis", {})
+    api_info = available_apis.get(api_name, {})
+    return api_info.get("description", f"Execute the {api_name} API")
+
+#---------- GRAPH CREATION ----------#
+
+# Create the conversational agent graph
+def create_conversational_agent_graph():
+    """
+    Creates the langgraph for the conversational agent with consent flow
+    """
+    # Create the LLM node with tools
+    llm_node = create_llm_node()
+    
+    # Create the graph
+    workflow = StateGraph(ConversationalAgentState)
+    
+    # Add nodes
+    workflow.add_node("process_input", get_context_for_llm)
+    workflow.add_node("generate_response", llm_node)
+    workflow.add_node("detect_api_execution", detect_api_execution)
+    workflow.add_node("process_consent_response", process_consent_response)
+    workflow.add_node("execute_approved_action", execute_approved_action)
+    workflow.add_node("handle_unclear_consent", handle_unclear_consent)
+    workflow.add_node("handle_canceled_action", handle_canceled_action)
+    
+    # Define edges
+    # 1. Start with processing input
+    workflow.set_entry_point("process_input")
+    
+    # 2. Generate a response using LLM
+    workflow.add_edge("process_input", "generate_response")
+    
+    # 3. Check if response requires consent
+    workflow.add_edge("generate_response", "detect_api_execution")
+    
+    # 4. Route based on whether consent is needed
+    # If consent was previously requested, check the user's response
+    workflow.add_conditional_edges(
+        "detect_api_execution",
+        process_consent_response,
+        {
+            "execute_action": "execute_approved_action",
+            "cancel_action": "handle_canceled_action",
+            "unclear_response": "handle_unclear_consent",
+            "continue": "process_input"  # Loop back for normal conversation
+        }
+    )
+    
+    # 5. After executing action, return to processing input
+    workflow.add_edge("execute_approved_action", "process_input")
+    workflow.add_edge("handle_unclear_consent", "process_input")
+    workflow.add_edge("handle_canceled_action", "process_input")
+    
+    # Compile the graph
+    return workflow.compile()
+
+#---------- USAGE ----------#
+
+# Function to initialize the agent state from historical data
+def initialize_from_historical_data(historical_result: Dict[str, Any]) -> ConversationalAgentState:
+    """
+    Initialize the conversational agent state from historical data
+    """
+    # Extract incident ID and customer ID
+    incident_id = historical_result.get("incident_id")
+    customer_id = historical_result.get("customer_id")
+    
+    # Get customer data
+    customer_data = None
+    if customer_id:
+        customer_data = fetch_customer_data(customer_id)
+    
+    # Initialize with available APIs
+    available_apis = {
+        "reset_user_permissions": {
+            "description": "Reset user permissions for specified services",
+            "parameters": ["user_id", "services"]
+        },
+        "rotate_api_keys": {
+            "description": "Rotate API keys for a service",
+            "parameters": ["service", "expiry"]
+        },
+        "restart_service": {
+            "description": "Restart a specific service",
+            "parameters": ["service"]
+        },
+        "clear_cache": {
+            "description": "Clear cache for a specific service",
+            "parameters": ["cache_type"]
+        }
+    }
+    
+    # Create initial message
+    initial_message = {
+        "role": "assistant",
+        "content": f"""
+I've analyzed incident {incident_id} but couldn't find a direct resolution in our business rules.
+
+This appears to be a {historical_result.get("issue_type")} with error code {historical_result.get("contextual_data", {}).get("error_code")} affecting the {historical_result.get("contextual_data", {}).get("affected_service")} service.
+
+I can help you troubleshoot this further. Would you like me to:
+1. Analyze recent transaction logs
+2. Check for similar past incidents
+3. Execute a specific resolution action
+4. Something else?
+        """
+    }
+    
+    # Create initial state
+    initial_state = {
+        "messages": [initial_message],
+        "incident_id": incident_id,
+        "customer_data": customer_data,
+        "historical_result": historical_result,
+        "traversal_path": historical_result.get("traversal_path", []),
+        "available_apis": available_apis,
+        "api_results": {},
+        "additional_context": {},
+        "pending_action": None,
+        "consent_state": None
+    }
+    
+    return initial_state
+
+# Function to run the conversational agent
+def run_conversational_agent(user_message: str, state: ConversationalAgentState) -> ConversationalAgentState:
+    """
+    Run the conversational agent with a user message
+    
+    Args:
+        user_message: Message from the user
+        state: Current state
+        
+    Returns:
+        Updated state with agent's response
+    """
+    # Create agent graph
+    agent_graph = create_conversational_agent_graph()
+    
+    # Add user message to state
+    updated_state = {
+        **state,
+        "messages": state["messages"] + [{"role": "user", "content": user_message}]
+    }
+    
+    # Run the graph
+    result_state = agent_graph.invoke(updated_state)
+    
+    return result_state
+
+#---------- EXAMPLE ----------#
+
+# Example usage
+def example_conversation():
+    """Example showing the conversational agent with consent flow"""
+    
+    # Sample historical data (would come from your historical agent)
+    historical_data = {
+        "incident_id": "INC-2025-1234",
+        "customer_id": "CUST-5678",
+        "issue_type": "payment_processing_failure",
+        "resolution": None,
+        "reasoning": "No matching business rule found after traversing knowledge graph.",
+        "traversal_path": ["payment_rules", "gateway_integration", "authentication_flow"],
+        "contextual_data": {
+            "affected_service": "payment_gateway",
+            "error_code": "AUTH_FAILURE_503",
+            "last_successful_transaction": "2025-05-06T23:15:42Z"
+        }
+    }
+    
+    # Initialize state
+    state = initialize_from_historical_data(historical_data)
+    
+    # Print initial assistant message
+    print(f"Bot: {state['messages'][0]['content']}\n")
+    
+    # Example conversation
+    conversation = [
+        "Can you analyze the recent transaction logs for this incident?",
+        "What similar incidents have we had in the past?",
+        "Let's try rotating the API keys for the payment gateway",
+        "yes",  # User approves
+        "What's the status of the payment gateway now?",
+        "Let's restart the service to make sure",
+        "no",  # User denies
+        "Let's clear the cache instead",
+        "yes"  # User approves
+    ]
+    
+    # Process each message
+    for message in conversation:
+        print(f"User: {message}")
+        state = run_conversational_agent(message, state)
+        print(f"Bot: {state['messages'][-1]['content']}\n")
+        
+        # Debug info
+        if state.get("consent_state") == "awaiting":
+            print(f"[DEBUG] Awaiting consent for: {state.get('pending_action', {}).get('api_name')}\n")
+    
+    return state
+
+# Function to integrate with a supervisor
+def get_conversational_agent_for_supervisor():
+    """
+    Returns a function that can be used as a worker in a supervisor agent
+    """
+    # Create the agent graph
+    agent_graph = create_conversational_agent_graph()
+    
+    def process_with_conversational_agent(state):
+        # Convert supervisor state to conversational agent state
+        conv_state = {
+            "messages": state.get("messages", []),
+            "incident_id": state.get("incident_id"),
+            "customer_data": state.get("customer_data"),
+            "historical_result": state.get("historical_result", {}),
+            "traversal_path": state.get("historical_result", {}).get("traversal_path", []),
+            "available_apis": state.get("available_apis", {}),
+            "api_results": state.get("api_results", {}),
+            "additional_context": state.get("additional_context", {}),
+            "pending_action": state.get("pending_action"),
+            "consent_state": state.get("consent_state")
+        }
+        
+        # Run the agent
+        result_state = agent_graph.invoke(conv_state)
+        
+        # Convert back to supervisor state format
+        return {
+            **state,
+            "messages": result_state["messages"],
+            "api_results": result_state["api_results"],
+            "additional_context": result_state["additional_context"],
+            "pending_action": result_state["pending_action"],
+            "consent_state": result_state["consent_state"]
+        }
+    
+    return process_with_conversational_agent
+
+# Run the example if executed directly
+if __name__ == "__main__":
+    example_conversation()
+```
+
+## Key Features of This Implementation
+
+This approach uses langgraph's native tools and state management, with key advantages:
+
+1. **Pure Langgraph Implementation**: Uses langgraph's native architecture rather than LangChain agents, avoiding compatibility issues.
+
+2. **Explicit Consent Flow**:
+   - Clearly detects when an API execution is being suggested
+   - Interrupts the flow to request explicit consent
+   - Processes user's response appropriately
+
+3. **Better State Management**:
+   - Clear state transitions for the consent flow
+   - Tracking of pending actions and consent state
+   - Preservation of conversation context
+
+4. **Tool Integration**:
+   - Direct binding of tools to the LLM
+   - Tools are available but API execution is intercepted
+
+5. **Error Handling**:
+   - Graceful handling of unclear responses
+   - Proper error handling for API execution
+   - Clear feedback to users
+
+This implementation is more reliable as it doesn't depend on specific LangChain agent implementations and their required parameters. It's a pure langgraph approach that should work consistently across versions.
+
+Would you like me to explain any specific part of this implementation in more detail?
