@@ -1,0 +1,399 @@
+from typing import TypedDict, List, Dict, Any, Optional
+import asyncio
+import time
+from datetime import datetime
+from langchain_openai import ChatOpenAI
+from langgraph.graph import StateGraph, START
+from langgraph.types import StreamEvent
+
+# Define our State object
+class ResearchState(TypedDict):
+    query: str  # User's original query
+    sub_queries: List[str]  # Breaking down the main query into sub-questions
+    search_results: Dict[str, List[Dict]]  # Results keyed by sub-query
+    analysis: Dict[str, str]  # Analysis of each result set
+    final_summary: str  # Final combined response
+    status: Dict[str, Any]  # Track progress and status info
+
+# 1. INITIALIZE THE SERVICES WE'LL USE
+
+# Initialize LLM for various processing steps
+llm = ChatOpenAI(
+    model="gpt-4-turbo",
+    temperature=0,
+    streaming=True  # Enable streaming for token-by-token output
+)
+
+# Mock search function (in a real app, you'd integrate with an actual search API)
+async def mock_search(query: str) -> List[Dict]:
+    """Simulate searching for information"""
+    # Simulate network delay
+    await asyncio.sleep(1)
+    
+    # Return mock results
+    return [
+        {"title": f"Result 1 for {query}", "snippet": f"This is the first result about {query}..."},
+        {"title": f"Result 2 for {query}", "snippet": f"Another interesting result about {query}..."},
+        {"title": f"Result 3 for {query}", "snippet": f"More information about {query}..."},
+    ]
+
+# 2. NODE FUNCTIONS FOR OUR GRAPH
+
+# Node to break down the main query into sub-queries
+async def break_down_query(state: ResearchState, writer) -> Dict:
+    """Break down the main query into sub-queries"""
+    
+    # Send an initial status event
+    writer.write(StreamEvent(
+        event_type="status_update",
+        data={"stage": "query_breakdown", "message": "Breaking down your question into research components..."}
+    ))
+    
+    # Use the LLM to break down the query
+    main_query = state["query"]
+    messages = [{"role": "user", "content": f"Break down this complex question into 3 distinct sub-questions that would help answer it thoroughly: '{main_query}'. Just list the 3 questions, nothing else."}]
+    
+    # Stream the LLM's thinking process as it happens
+    response_buffer = ""
+    async for chunk in llm.astream(messages):
+        response_buffer += chunk.content
+        # Stream the in-progress response
+        writer.write(StreamEvent(
+            event_type="thinking_process",
+            data={"content": chunk.content, "stage": "query_breakdown"}
+        ))
+    
+    # Parse the response to get sub-queries
+    sub_queries = [line.strip() for line in response_buffer.split('\n') if line.strip()]
+    
+    # Send the final set of sub-queries as a completion event
+    writer.write(StreamEvent(
+        event_type="stage_complete",
+        data={
+            "stage": "query_breakdown",
+            "result": sub_queries,
+            "timestamp": datetime.now().isoformat()
+        }
+    ))
+    
+    # Update and return the new state
+    return {
+        "sub_queries": sub_queries,
+        "status": {
+            "current_stage": "research",
+            "progress": 25,
+            "last_updated": datetime.now().isoformat(),
+            "message": "Research questions generated"
+        }
+    }
+
+# Node to research each sub-query
+async def research_sub_queries(state: ResearchState, writer) -> Dict:
+    """Research each sub-query in parallel"""
+    
+    writer.write(StreamEvent(
+        event_type="status_update",
+        data={"stage": "research", "message": "Researching information for each component..."}
+    ))
+    
+    sub_queries = state.get("sub_queries", [])
+    search_results = {}
+    
+    # Process each sub-query
+    for idx, query in enumerate(sub_queries):
+        # Update status before starting this sub-query
+        writer.write(StreamEvent(
+            event_type="research_progress",
+            data={
+                "total_queries": len(sub_queries),
+                "current_query": idx + 1,
+                "current_query_text": query,
+                "percent_complete": (idx / len(sub_queries)) * 100
+            }
+        ))
+        
+        # Perform the search
+        results = await mock_search(query)
+        search_results[query] = results
+        
+        # Send the results for this specific sub-query
+        writer.write(StreamEvent(
+            event_type="sub_query_results",
+            data={
+                "query": query,
+                "results": results,
+                "result_count": len(results),
+                "query_index": idx
+            }
+        ))
+    
+    # Send completion event for the entire research phase
+    writer.write(StreamEvent(
+        event_type="stage_complete",
+        data={
+            "stage": "research",
+            "total_results": sum(len(results) for results in search_results.values()),
+            "timestamp": datetime.now().isoformat()
+        }
+    ))
+    
+    # Update and return the new state
+    return {
+        "search_results": search_results,
+        "status": {
+            "current_stage": "analysis",
+            "progress": 50,
+            "last_updated": datetime.now().isoformat(),
+            "message": "Research complete, beginning analysis"
+        }
+    }
+
+# Node to analyze the search results
+async def analyze_results(state: ResearchState, writer) -> Dict:
+    """Analyze search results for each sub-query"""
+    
+    writer.write(StreamEvent(
+        event_type="status_update",
+        data={"stage": "analysis", "message": "Analyzing information gathered..."}
+    ))
+    
+    sub_queries = state.get("sub_queries", [])
+    search_results = state.get("search_results", {})
+    analysis = {}
+    
+    # Analyze each set of results
+    for idx, query in enumerate(sub_queries):
+        if query not in search_results:
+            continue
+            
+        # Update status for this analysis
+        writer.write(StreamEvent(
+            event_type="analysis_progress",
+            data={
+                "total_queries": len(sub_queries),
+                "current_query": idx + 1,
+                "current_query_text": query,
+                "percent_complete": (idx / len(sub_queries)) * 100
+            }
+        ))
+        
+        # Format the results for the LLM
+        results_text = "\n".join([
+            f"- {r['title']}: {r['snippet']}" 
+            for r in search_results[query]
+        ])
+        
+        # Analyze with LLM
+        messages = [{"role": "user", "content": f"Analyze these search results for the query '{query}':\n\n{results_text}\n\nProvide a concise summary of the key information."}]
+        
+        # Stream the analysis process
+        response_buffer = ""
+        async for chunk in llm.astream(messages):
+            response_buffer += chunk.content
+            # Stream the thinking process for this analysis
+            writer.write(StreamEvent(
+                event_type="thinking_process",
+                data={
+                    "content": chunk.content, 
+                    "stage": "analysis",
+                    "query": query
+                }
+            ))
+        
+        # Save the complete analysis
+        analysis[query] = response_buffer
+        
+        # Send completed analysis for this query
+        writer.write(StreamEvent(
+            event_type="sub_query_analysis",
+            data={
+                "query": query,
+                "analysis": response_buffer,
+                "query_index": idx
+            }
+        ))
+    
+    # Signal completion of analysis phase
+    writer.write(StreamEvent(
+        event_type="stage_complete",
+        data={
+            "stage": "analysis",
+            "timestamp": datetime.now().isoformat()
+        }
+    ))
+    
+    # Update and return the new state
+    return {
+        "analysis": analysis,
+        "status": {
+            "current_stage": "summarization",
+            "progress": 75,
+            "last_updated": datetime.now().isoformat(),
+            "message": "Analysis complete, creating final summary"
+        }
+    }
+
+# Node to create the final summary
+async def create_summary(state: ResearchState, writer) -> Dict:
+    """Create a final summary from all the analyses"""
+    
+    writer.write(StreamEvent(
+        event_type="status_update",
+        data={"stage": "summarization", "message": "Creating final comprehensive answer..."}
+    ))
+    
+    # Get the original query and all analyses
+    main_query = state["query"]
+    analysis = state.get("analysis", {})
+    
+    # Combine all analyses
+    combined_analysis = "\n\n".join([
+        f"Analysis for '{query}':\n{result}" 
+        for query, result in analysis.items()
+    ])
+    
+    # Generate final summary with LLM
+    messages = [{"role": "user", "content": f"Based on the following analyses, provide a comprehensive answer to the original question: '{main_query}'\n\n{combined_analysis}"}]
+    
+    # Stream the summary generation
+    response_buffer = ""
+    async for chunk in llm.astream(messages):
+        response_buffer += chunk.content
+        # Stream each piece of the final summary
+        writer.write(StreamEvent(
+            event_type="final_summary_chunk",
+            data={"content": chunk.content}
+        ))
+    
+    # Signal completion of the entire process
+    writer.write(StreamEvent(
+        event_type="process_complete",
+        data={
+            "timestamp": datetime.now().isoformat(),
+            "query": main_query,
+            "execution_time": time.time() - state.get("status", {}).get("start_time", time.time())
+        }
+    ))
+    
+    # Update and return the final state
+    return {
+        "final_summary": response_buffer,
+        "status": {
+            "current_stage": "complete",
+            "progress": 100,
+            "last_updated": datetime.now().isoformat(),
+            "message": "Research complete"
+        }
+    }
+
+# 3. CONSTRUCT THE GRAPH
+
+# Initial state factory function
+def initial_state(query: str) -> ResearchState:
+    """Create an initial state from the query"""
+    return {
+        "query": query,
+        "sub_queries": [],
+        "search_results": {},
+        "analysis": {},
+        "final_summary": "",
+        "status": {
+            "current_stage": "starting",
+            "progress": 0,
+            "start_time": time.time(),
+            "message": "Initializing research process",
+            "last_updated": datetime.now().isoformat()
+        }
+    }
+
+# Create and compile the graph
+def create_research_graph():
+    """Create the research workflow graph"""
+    # Create the graph with our state type
+    graph = StateGraph(ResearchState)
+    
+    # Add all our nodes
+    graph.add_node("break_down_query", break_down_query)
+    graph.add_node("research", research_sub_queries)
+    graph.add_node("analyze", analyze_results)
+    graph.add_node("summarize", create_summary)
+    
+    # Connect the nodes in sequence
+    graph.add_edge(START, "break_down_query")
+    graph.add_edge("break_down_query", "research")
+    graph.add_edge("research", "analyze")
+    graph.add_edge("analyze", "summarize")
+    
+    # Compile the graph
+    return graph.compile()
+
+# 4. CLIENT CODE TO USE THE GRAPH
+
+async def process_research_query(query: str):
+    """Process a research query and display streaming results"""
+    # Create the graph
+    graph = create_research_graph()
+    
+    # Initialize with our query
+    state = initial_state(query)
+    
+    # Track the current stage for display purposes
+    current_stage = "starting"
+    
+    # Use custom streaming mode to get all our custom events
+    async for event, metadata in graph.astream(state, stream_mode="custom"):
+        # Example of processing different event types
+        if isinstance(event, StreamEvent):
+            event_type = event.event_type
+            data = event.data
+            
+            # Handle different event types
+            if event_type == "status_update":
+                stage = data.get("stage", "")
+                message = data.get("message", "")
+                if stage != current_stage:
+                    current_stage = stage
+                    print(f"\n=== {message.upper()} ===\n")
+            
+            elif event_type == "thinking_process":
+                # Stream AI's thinking in real-time
+                print(data.get("content", ""), end="", flush=True)
+            
+            elif event_type == "research_progress":
+                # Show research progress
+                query_text = data.get("current_query_text", "")
+                query_num = data.get("current_query", 0)
+                total = data.get("total_queries", 0)
+                print(f"\nResearching ({query_num}/{total}): {query_text}")
+            
+            elif event_type == "sub_query_results":
+                # Show when we get results for a sub-query
+                result_count = data.get("result_count", 0)
+                query = data.get("query", "")
+                print(f"  ✓ Found {result_count} results for: {query}")
+            
+            elif event_type == "sub_query_analysis":
+                # Show when analysis is complete for a sub-query
+                query = data.get("query", "")
+                print(f"  ✓ Completed analysis for: {query}")
+            
+            elif event_type == "final_summary_chunk":
+                # Print the final summary as it's generated
+                print(data.get("content", ""), end="", flush=True)
+            
+            elif event_type == "process_complete":
+                # Show completion message with execution time
+                execution_time = data.get("execution_time", 0)
+                print(f"\n\n=== RESEARCH COMPLETE (took {execution_time:.2f}s) ===")
+
+# 5. EXAMPLE USAGE
+
+async def main():
+    """Run an example research query"""
+    query = "What are the environmental impacts of electric vehicles compared to traditional combustion engines?"
+    print(f"Researching: {query}\n")
+    await process_research_query(query)
+
+# Run the example
+if __name__ == "__main__":
+    asyncio.run(main())
