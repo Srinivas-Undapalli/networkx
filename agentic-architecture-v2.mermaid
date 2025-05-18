@@ -1,0 +1,109 @@
+graph TD
+    %% Main input channels
+    POS(Point of Sales Channel) --> CRA
+    BA(Backend Automation Channel) --> CRA
+    T2(Tier-2 Agent Channel) --> CRA
+
+    %% Channel Routing Agent
+    subgraph "Channel Routing Layer"
+        CRA[Channel Routing Agent]
+    end
+    
+    %% Processing Flows
+    CRA --> |Single Request| SRF[Single Request Flow]
+    CRA --> |Batch Processing| BPF[Batch Processing Flow]
+    CRA --> |Conversational| CF[Conversational Flow]
+    
+    %% Orchestration Layer
+    subgraph "Orchestration Layer"
+        OA[Orchestrator Agent]
+    end
+    
+    SRF --> OA
+    BPF --> OA
+    CF --> OA
+
+    %% Journey Agents Layer
+    OA --> JA[Journey Manager Agent]
+    
+    %% Domain-specific Agents
+    subgraph "Domain-specific Agents"
+        JA --> ORA[Order Resolution Agent]
+        JA --> AA[Activation Agent]
+        JA --> PA[Perks Agent]
+        JA --> PDA[Promo & Discounts Agent]
+        JA --> DA[Dependency Analysis Agent]
+    end
+
+    %% Knowledge and Memory Components
+    subgraph "Knowledge & Memory"
+        KG[(Knowledge Graph)]
+        VM[(Vector Memory)]
+        EM[(Episodic Memory)]
+        RM[(Reflective Memory)]
+    end
+
+    %% Self-learning Components
+    subgraph "Self-learning"
+        FE[Feedback Engine]
+        SLM[Self-learning Module]
+    end
+
+    %% Integration Layer
+    subgraph "Integration Layer"
+        API[API Gateway]
+        TI[Tool Integration Hub]
+    end
+
+    %% Data Layer
+    subgraph "Data Layer"
+        CD[(Customer Data)]
+        TD[(Transaction Data)]
+    end
+
+    %% LangGraph Engine
+    LG[LangGraph Engine]
+    
+    %% Connections
+    ORA <--> KG
+    AA <--> KG
+    PA <--> KG
+    PDA <--> KG
+    DA <--> KG
+    
+    OA <--> VM
+    OA <--> EM
+    OA <--> RM
+    
+    JA --> API
+    API <--> TI
+    
+    OA --> FE
+    FE --> SLM
+    SLM --> KG
+    
+    API --> CD
+    API --> TD
+    
+    KG <--> LG
+    
+    %% Output connections
+    OA --> |Resolution| POS
+    OA --> |Batch Results| BA
+    OA --> |Conversational| T2
+    
+    %% Styling
+    classDef channel fill:#f9a,stroke:#333,stroke-width:2px;
+    classDef agent fill:#aef,stroke:#333,stroke-width:2px;
+    classDef memory fill:#fea,stroke:#333,stroke-width:2px;
+    classDef integration fill:#afa,stroke:#333,stroke-width:2px;
+    classDef data fill:#e7d,stroke:#333,stroke-width:2px;
+    classDef learning fill:#c9f,stroke:#333,stroke-width:2px;
+    
+    class POS,BA,T2 channel;
+    class CRA,OA,JA,ORA,AA,PA,PDA,DA agent;
+    class KG,VM,EM,RM memory;
+    class API,TI integration;
+    class CD,TD data;
+    class FE,SLM learning;
+    class LG integration;
