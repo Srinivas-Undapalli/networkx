@@ -1,0 +1,189 @@
+<svg viewBox="0 0 1000 700" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="headerGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="processGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8fafc;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e2e8f0;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  
+  <!-- Title -->
+  <rect x="50" y="20" width="900" height="50" rx="5" fill="url(#headerGradient)" filter="url(#shadow)"/>
+  <text x="500" y="50" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="20" font-weight="bold">
+    Intelligent Anomaly Detection & Correction System
+  </text>
+  
+  <!-- Data Input Stage -->
+  <g id="input-stage">
+    <rect x="80" y="120" width="140" height="80" rx="8" fill="url(#processGradient)" stroke="#3b82f6" stroke-width="2" filter="url(#shadow)"/>
+    <text x="150" y="145" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#1e40af">Order Data Input</text>
+    <text x="150" y="160" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#64748b">Order Number &amp;</text>
+    <text x="150" y="175" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#64748b">Location Code</text>
+  </g>
+  
+  <!-- Profile Enrichment -->
+  <g id="profile-stage">
+    <rect x="280" y="120" width="140" height="80" rx="8" fill="url(#processGradient)" stroke="#3b82f6" stroke-width="2" filter="url(#shadow)"/>
+    <text x="350" y="145" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#1e40af">Profile Enrichment</text>
+    <text x="350" y="160" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#64748b">Fetch Profile &amp;</text>
+    <text x="350" y="175" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#64748b">Order Details</text>
+  </g>
+  
+  <!-- JSON Processing -->
+  <g id="json-stage">
+    <rect x="480" y="120" width="140" height="80" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="2" filter="url(#shadow)"/>
+    <text x="550" y="145" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#92400e">JSON Processing</text>
+    <text x="550" y="160" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#92400e">Order/Service</text>
+    <text x="550" y="175" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#92400e">Classification</text>
+    <text x="550" y="190" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#92400e">(AM/EU/P/Plan/Service/Change)</text>
+  </g>
+  
+  <!-- Anomaly Detection Matrix -->
+  <g id="anomaly-matrix">
+    <rect x="700" y="90" width="220" height="140" rx="8" fill="#fef2f2" stroke="#ef4444" stroke-width="2" filter="url(#shadow)"/>
+    <text x="810" y="115" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#dc2626">Anomaly Detection Matrix</text>
+    
+    <!-- Phase indicator for matrix -->
+    <rect x="710" y="95" width="40" height="15" rx="2" fill="#0ea5e9"/>
+    <text x="730" y="105" text-anchor="middle" font-family="Arial, sans-serif" font-size="8" font-weight="bold" fill="white">PHASE 1</text>
+    
+    <!-- Matrix grid -->
+    <rect x="720" y="130" width="60" height="40" rx="4" fill="white" stroke="#e5e7eb"/>
+    <text x="750" y="145" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#374151">SIM</text>
+    <text x="750" y="160" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#6b7280">Status</text>
+    
+    <rect x="785" y="130" width="60" height="40" rx="4" fill="white" stroke="#e5e7eb"/>
+    <text x="815" y="145" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#374151">Device</text>
+    <text x="815" y="160" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#6b7280">Type</text>
+    
+    <rect x="850" y="130" width="60" height="40" rx="4" fill="white" stroke="#e5e7eb"/>
+    <text x="880" y="145" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#374151">Feature</text>
+    <text x="880" y="160" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#6b7280">Config</text>
+    
+    <rect x="720" y="175" width="60" height="40" rx="4" fill="white" stroke="#e5e7eb"/>
+    <text x="750" y="190" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#374151">Product</text>
+    <text x="750" y="205" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#6b7280">Match</text>
+    
+    <rect x="785" y="175" width="60" height="40" rx="4" fill="white" stroke="#e5e7eb"/>
+    <text x="815" y="190" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#374151">Service</text>
+    <text x="815" y="205" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#6b7280">Validation</text>
+    
+    <rect x="850" y="175" width="60" height="40" rx="4" fill="white" stroke="#e5e7eb"/>
+    <text x="880" y="190" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#374151">Business</text>
+    <text x="880" y="205" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#6b7280">Rules</text>
+  </g>
+  
+  <!-- Strategy Engine -->
+  <g id="strategy-engine">
+    <rect x="700" y="280" width="220" height="80" rx="8" fill="#f0f9ff" stroke="#0ea5e9" stroke-width="2" filter="url(#shadow)"/>
+    <text x="810" y="305" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#0c4a6e">Strategy Engine</text>
+    
+    <!-- Phase indicator for strategy -->
+    <rect x="710" y="285" width="40" height="15" rx="2" fill="#0ea5e9"/>
+    <text x="730" y="295" text-anchor="middle" font-family="Arial, sans-serif" font-size="8" font-weight="bold" fill="white">PHASE 1</text>
+    
+    <text x="810" y="325" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#0c4a6e">Anomaly Matrix to</text>
+    <text x="810" y="340" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#0c4a6e">Correction Strategy</text>
+    <text x="810" y="355" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#64748b">Enhanced via JSON Rules</text>
+  </g>
+  
+  <!-- Correction Agent -->
+  <g id="correction-agent">
+    <rect x="380" y="430" width="240" height="140" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="2" filter="url(#shadow)"/>
+    <text x="500" y="455" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#15803d">Correction Agent</text>
+    
+    <!-- Sub-components -->
+    <rect x="400" y="480" width="80" height="35" rx="4" fill="white" stroke="#22c55e"/>
+    <text x="440" y="495" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#15803d">Lead</text>
+    <text x="440" y="508" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#15803d">Resolver</text>
+    
+    <rect x="500" y="480" width="80" height="35" rx="4" fill="white" stroke="#22c55e"/>
+    <text x="540" y="495" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#15803d">Order</text>
+    <text x="540" y="508" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#15803d">Resolver</text>
+    
+    <rect x="450" y="530" width="100" height="30" rx="4" fill="white" stroke="#22c55e"/>
+    <text x="500" y="545" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="#15803d">Plan Refine</text>
+    <text x="500" y="555" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" fill="#64748b">Optimization Engine</text>
+  </g>
+  
+  <!-- Phase Indicators -->
+  <!-- Current Phase -->
+  <g id="current-phase">
+    <rect x="50" y="570" width="420" height="120" rx="8" fill="#f0f9ff" stroke="#0ea5e9" stroke-width="2" filter="url(#shadow)"/>
+    <rect x="60" y="580" width="100" height="25" rx="4" fill="#0ea5e9"/>
+    <text x="110" y="597" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="white">CURRENT PHASE</text>
+    
+    <text x="70" y="620" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#0c4a6e">Active Anomaly Checks:</text>
+    <text x="85" y="635" font-family="Arial, sans-serif" font-size="10" fill="#0369a1">• SIM Status Validation</text>
+    <text x="85" y="650" font-family="Arial, sans-serif" font-size="10" fill="#0369a1">• Device Type Compatibility</text>
+    <text x="245" y="635" font-family="Arial, sans-serif" font-size="10" fill="#0369a1">• Product Feature Alignment</text>
+    <text x="245" y="650" font-family="Arial, sans-serif" font-size="10" fill="#0369a1">• Basic Service Validation</text>
+    
+    <text x="70" y="670" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#0c4a6e">Correction Capabilities:</text>
+    <text x="85" y="685" font-family="Arial, sans-serif" font-size="10" fill="#0369a1">Standard resolution patterns via Lead &amp; Order Resolvers</text>
+  </g>
+
+  <!-- Enhancement Scope -->
+  <g id="enhancement-scope">
+    <rect x="530" y="570" width="420" height="120" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="2" filter="url(#shadow)"/>
+    <rect x="540" y="580" width="120" height="25" rx="4" fill="#22c55e"/>
+    <text x="600" y="597" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="white">ENHANCEMENT SCOPE</text>
+    
+    <text x="550" y="620" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#15803d">Expanded Anomaly Matrix:</text>
+    <text x="565" y="635" font-family="Arial, sans-serif" font-size="10" fill="#166534">• Advanced Business Rule Engine</text>
+    <text x="565" y="650" font-family="Arial, sans-serif" font-size="10" fill="#166534">• Cross-Service Dependencies</text>
+    <text x="750" y="635" font-family="Arial, sans-serif" font-size="10" fill="#166534">• Pricing &amp; Billing Validation</text>
+    <text x="750" y="650" font-family="Arial, sans-serif" font-size="10" fill="#166534">• Regulatory Compliance Checks</text>
+    
+    <text x="550" y="670" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#15803d">Enhanced Correction Strategy:</text>
+    <text x="565" y="685" font-family="Arial, sans-serif" font-size="10" fill="#166534">AI-powered resolution with predictive recommendations</text>
+  </g>
+  
+  <!-- Flow Arrows -->
+  <!-- Input to Profile -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6" />
+    </marker>
+  </defs>
+  
+  <line x1="220" y1="160" x2="280" y2="160" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="420" y1="160" x2="480" y2="160" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="620" y1="160" x2="700" y2="160" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="810" y1="230" x2="810" y2="280" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <line x1="700" y1="320" x2="620" y2="480" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowhead)"/>
+  
+  <!-- Enhancement Arrows and Callouts -->
+  <g id="enhancement-indicators">
+    <!-- Anomaly Matrix Enhancement Arrow -->
+    <path d="M 920 160 Q 970 140 970 100 Q 970 60 920 40" stroke="#22c55e" stroke-width="3" fill="none" stroke-dasharray="8,4" marker-end="url(#enhanceArrow)"/>
+    <rect x="925" y="30" width="120" height="35" rx="4" fill="#22c55e" filter="url(#shadow)"/>
+    <text x="985" y="45" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="bold" fill="white">FUTURE: Advanced</text>
+    <text x="985" y="58" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="bold" fill="white">Business Rules Engine</text>
+    
+    <!-- Strategy Enhancement Arrow -->
+    <path d="M 920 320 Q 970 300 970 260 Q 970 220 920 200" stroke="#22c55e" stroke-width="3" fill="none" stroke-dasharray="8,4" marker-end="url(#enhanceArrow)"/>
+    <rect x="925" y="190" width="120" height="35" rx="4" fill="#22c55e" filter="url(#shadow)"/>
+    <text x="985" y="205" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="bold" fill="white">FUTURE: AI-Powered</text>
+    <text x="985" y="218" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="bold" fill="white">Predictive Corrections</text>
+    
+    <!-- Correction Agent Enhancement -->
+    <path d="M 620 500 Q 670 480 670 440 Q 670 400 620 380" stroke="#22c55e" stroke-width="3" fill="none" stroke-dasharray="8,4" marker-end="url(#enhanceArrow)"/>
+    <rect x="625" y="370" width="120" height="35" rx="4" fill="#22c55e" filter="url(#shadow)"/>
+    <text x="685" y="385" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="bold" fill="white">FUTURE: Intelligent</text>
+    <text x="685" y="398" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="bold" fill="white">Self-Learning Agent</text>
+  </g>
+  
+  <!-- Enhanced Arrow Marker -->
+  <defs>
+    <marker id="enhanceArrow" markerWidth="12" markerHeight="8" refX="12" refY="4" orient="auto">
+      <polygon points="0 0, 12 4, 0 8" fill="#22c55e" />
+    </marker>
+  </defs>
+</svg>
