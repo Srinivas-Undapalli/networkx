@@ -1,0 +1,117 @@
+# Agentic AI Anomaly Data Pattern Analysis Prompt
+
+## Context
+You are an expert data analyst tasked with analyzing anomaly data from an Agentic AI system in production. The dataset contains 1000+ records of anomalies that are overwhelming for the operations team to process manually. Your goal is to identify recurring patterns, root causes, and provide actionable insights.
+
+## Dataset Structure
+The CSV contains the following columns:
+- **cjcmStatus**: Current status in the system
+- **Action**: Type of action (Activation/Deactivation)
+- **customerSegment**: Customer type (Mobility or Wifi)
+- **SubscriptionStatus**: Current subscription state
+- **EntitlementStatus**: Entitlement verification status
+- **RegistrationStatus**: User registration state
+- **VendorSideStatus**: External vendor system status
+- **BillingStatus**: Payment/billing state
+- **Product_Description**: Specific product details
+- **Anomaly_Summary**: Detailed description including possible root cause analysis and user impact
+
+## Analysis Requirements
+
+### 1. Pattern Identification
+Analyze the data to identify:
+- **Frequency Patterns**: Which combinations of status fields appear most often in anomalies?
+- **Correlation Patterns**: Which status combinations tend to occur together?
+- **Customer Segment Patterns**: Are certain anomalies more prevalent in Mobility vs Wifi customers?
+- **Action-Based Patterns**: Do Activation vs Deactivation actions show different anomaly profiles?
+- **Product-Specific Patterns**: Which products are most affected by anomalies?
+
+### 2. Root Cause Analysis
+Using the Anomaly_Summary field:
+- Extract and categorize the most common root causes mentioned
+- Map root causes to status field combinations
+- Identify systemic vs transient issues
+- Highlight vendor-related vs internal system issues
+
+### 3. Impact Assessment
+Categorize anomalies by:
+- **Severity**: Critical, High, Medium, Low (based on user impact described in Anomaly_Summary)
+- **Affected Systems**: Which system components are most impacted
+- **Customer Impact**: Revenue impact, service disruption, user experience degradation
+
+## Output Format
+
+Please structure your analysis as follows:
+
+### Executive Summary
+- Total anomalies analyzed
+- Top 3 most critical patterns identified
+- Immediate action recommendations
+
+### Detailed Pattern Analysis
+
+#### Pattern 1: [Pattern Name]
+- **Frequency**: X occurrences (Y% of total)
+- **Characteristics**: Key status combinations
+- **Root Cause**: Primary causes identified from Anomaly_Summary
+- **Customer Impact**: Description of user-facing effects
+- **Affected Segments**: Mobility/Wifi breakdown
+- **Recommended Actions**: Specific operational steps
+
+#### Pattern 2: [Pattern Name]
+[Same structure as Pattern 1]
+
+#### Pattern 3: [Pattern Name]
+[Same structure as Pattern 1]
+
+### Status Field Correlation Matrix
+Create a correlation analysis showing which status combinations are most problematic:
+```
+High-Risk Combinations:
+- StatusA + StatusB + StatusC → X anomalies (Y% failure rate)
+- StatusD + StatusE → Z anomalies (W% failure rate)
+```
+
+### Root Cause Categories
+- **Category 1**: [e.g., Vendor Integration Issues] - X occurrences
+  - Common symptoms
+  - Typical resolution time
+  - Prevention strategies
+- **Category 2**: [e.g., Billing System Sync] - Y occurrences
+  - [Same structure]
+
+### Customer Segment Analysis
+- **Mobility Customers**: 
+  - Most common anomaly types
+  - Unique patterns not seen in Wifi
+  - Business impact
+- **Wifi Customers**:
+  - Most common anomaly types
+  - Unique patterns not seen in Mobility
+  - Business impact
+
+### Operational Recommendations
+1. **Immediate Actions** (next 24-48 hours)
+2. **Short-term Improvements** (next 2-4 weeks)
+3. **Long-term Prevention** (next quarter)
+
+### Monitoring & Alerting Suggestions
+Based on patterns identified, recommend:
+- Key metrics to monitor
+- Alert thresholds
+- Escalation criteria
+
+## Additional Instructions
+- Focus on actionable insights rather than just statistical summaries
+- Prioritize patterns that have the highest business impact
+- Include confidence levels for your pattern identifications
+- Suggest specific queries or filters the operations team can use to quickly identify these patterns in future datasets
+- If certain patterns require deeper investigation, clearly indicate what additional data would be helpful
+
+## Data Processing Notes
+- Handle missing values appropriately in your analysis
+- If certain status combinations are rare but critical, still highlight them
+- Consider temporal aspects if timestamp data is available
+- Validate your findings by cross-referencing Anomaly_Summary descriptions with status patterns
+
+Please analyze the uploaded CSV data and provide comprehensive pattern analysis following this structure.
